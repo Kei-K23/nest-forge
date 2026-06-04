@@ -55,14 +55,12 @@ export class AdminService {
       );
     }
 
-    const profileImageUrl = await this.fileUploadService.resolveProfileImageUrl(
-      {
-        file,
-        bodyUrl: createAdminDto.profileImageUrl,
-        existingUrl: '',
-        s3Path: 'admins/profile',
-      },
-    );
+    const profileImageUrl = await this.fileUploadService.resolveUrl({
+      file,
+      bodyUrl: createAdminDto.profileImageUrl,
+      existingUrl: '',
+      path: 'admins/profile',
+    });
 
     const admin = this.adminRepository.create({
       ...createAdminDto,
@@ -171,13 +169,12 @@ export class AdminService {
       }
     }
 
-    const newProfileImageUrl =
-      await this.fileUploadService.resolveProfileImageUrl({
-        file,
-        bodyUrl: dto.profileImageUrl,
-        existingUrl: existingAdmin.profileImageUrl || '',
-        s3Path: 'admins/profile',
-      });
+    const newProfileImageUrl = await this.fileUploadService.resolveUrl({
+      file,
+      bodyUrl: dto.profileImageUrl,
+      existingUrl: existingAdmin.profileImageUrl || '',
+      path: 'admins/profile',
+    });
 
     const updatedAdmin = await this.adminRepository.preload({
       id,
@@ -200,7 +197,7 @@ export class AdminService {
       ]),
     );
 
-    await this.fileUploadService.replaceProfileImage(
+    await this.fileUploadService.replace(
       newProfileImageUrl,
       existingAdmin.profileImageUrl || '',
     );
@@ -217,9 +214,7 @@ export class AdminService {
       throw new NotFoundException(`Admin with ID '${id}' not found`);
     }
 
-    await this.fileUploadService.deleteProfileImage(
-      existingAdmin.profileImageUrl || '',
-    );
+    await this.fileUploadService.remove(existingAdmin.profileImageUrl || '');
 
     await this.adminRepository.softRemove(existingAdmin);
     this.logger.log(`Admin with ID '${id}' has been successfully soft deleted`);

@@ -46,7 +46,7 @@ export class UserService {
     let profileImageUrl = createUserDto.profileImageUrl || '';
 
     if (file) {
-      const uploadedKey = await this.fileUploadService.uploadProfileImage(
+      const uploadedKey = await this.fileUploadService.upload(
         file,
         'users/profile',
       );
@@ -141,13 +141,12 @@ export class UserService {
       }
     }
 
-    const newProfileImageUrl =
-      await this.fileUploadService.resolveProfileImageUrl({
-        file,
-        bodyUrl: dto.profileImageUrl,
-        existingUrl: existingUser.profileImageUrl || '',
-        s3Path: 'users/profile',
-      });
+    const newProfileImageUrl = await this.fileUploadService.resolveUrl({
+      file,
+      bodyUrl: dto.profileImageUrl,
+      existingUrl: existingUser.profileImageUrl || '',
+      path: 'users/profile',
+    });
 
     const updatedUser = await this.userRepository.preload({
       id,
@@ -174,7 +173,7 @@ export class UserService {
       ]),
     );
 
-    await this.fileUploadService.replaceProfileImage(
+    await this.fileUploadService.replace(
       newProfileImageUrl,
       existingUser.profileImageUrl || '',
     );
@@ -191,9 +190,7 @@ export class UserService {
       throw new NotFoundException(`User with ID '${id}' not found`);
     }
 
-    await this.fileUploadService.deleteProfileImage(
-      existingUser.profileImageUrl || '',
-    );
+    await this.fileUploadService.remove(existingUser.profileImageUrl || '');
 
     await this.userRepository.softRemove(existingUser);
     this.logger.log(`User with ID '${id}' has been successfully soft deleted`);

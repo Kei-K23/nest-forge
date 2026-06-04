@@ -350,13 +350,12 @@ export class UserAuthService {
     }
 
     const existingProfileImageUrl = user.profileImageUrl || '';
-    const newProfileImageUrl =
-      await this.fileUploadService.resolveProfileImageUrl({
-        file,
-        bodyUrl: dto.profileImageUrl,
-        existingUrl: existingProfileImageUrl,
-        s3Path: 'users/profile',
-      });
+    const newProfileImageUrl = await this.fileUploadService.resolveUrl({
+      file,
+      bodyUrl: dto.profileImageUrl,
+      existingUrl: existingProfileImageUrl,
+      path: 'users/profile',
+    });
 
     user.email = dto.email ?? user.email;
     user.fullName = dto.fullName;
@@ -368,10 +367,7 @@ export class UserAuthService {
     user.fcmToken = dto.fcmToken ?? user.fcmToken;
     await this.userService.saveEntity(user);
 
-    await this.fileUploadService.replaceProfileImage(
-      newProfileImageUrl,
-      existingProfileImageUrl,
-    );
+    await this.fileUploadService.replace(newProfileImageUrl, existingProfileImageUrl);
 
     const loginData = await this.completeUserLogin(user, request);
 
@@ -401,13 +397,12 @@ export class UserAuthService {
       password?: string;
     };
 
-    const newProfileImageUrl =
-      await this.fileUploadService.resolveProfileImageUrl({
-        file,
-        bodyUrl: dto.profileImageUrl,
-        existingUrl: user.profileImageUrl || '',
-        s3Path: 'users/profile',
-      });
+    const newProfileImageUrl = await this.fileUploadService.resolveUrl({
+      file,
+      bodyUrl: dto.profileImageUrl,
+      existingUrl: user.profileImageUrl || '',
+      path: 'users/profile',
+    });
 
     const updatedUser = await this.userService.preloadEntity({
       id: userId,
@@ -423,10 +418,7 @@ export class UserAuthService {
 
     const savedUser = await this.userService.saveEntity(updatedUser);
 
-    await this.fileUploadService.replaceProfileImage(
-      newProfileImageUrl,
-      user.profileImageUrl || '',
-    );
+    await this.fileUploadService.replace(newProfileImageUrl, user.profileImageUrl || '');
 
     this.logger.log(`User with ID '${user.id}' profile updated successfully`);
     return savedUser;
@@ -472,7 +464,7 @@ export class UserAuthService {
     }
 
     await this.tokenService.revokeAllUserTokens(userId);
-    await this.fileUploadService.deleteProfileImage(user.profileImageUrl || '');
+    await this.fileUploadService.remove(user.profileImageUrl || '');
 
     this.logger.log(
       `User with ID '${user.id}' account soft deleted successfully`,

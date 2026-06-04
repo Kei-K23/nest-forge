@@ -6,11 +6,11 @@ import { S3ClientUtils } from '../utils/s3-client.utils';
 export class FileUploadService {
   constructor(private readonly s3ClientUtils: S3ClientUtils) {}
 
-  async uploadProfileImage(
+  async upload(
     file: Express.Multer.File,
-    path: 'users/profile' | 'admins/profile',
+    path: string,
   ): Promise<string | null> {
-    const original = file.originalname?.trim() || 'profile';
+    const original = file.originalname?.trim() || 'file';
     const sanitized = original.replace(/[^a-zA-Z0-9_.-]/g, '_');
     const key = `${randomUUID()}-${sanitized}`;
 
@@ -26,19 +26,19 @@ export class FileUploadService {
   }
 
   /**
-   * Resolves which profile image URL to persist after an update.
+   * Resolves which file URL to persist after an update.
    *
    * Priority: uploaded file > body URL > existing URL.
-   * A body URL of '' means "clear the image".
+   * A body URL of '' means "clear the file".
    */
-  async resolveProfileImageUrl(opts: {
+  async resolveUrl(opts: {
     file?: Express.Multer.File;
     bodyUrl: string | undefined;
     existingUrl: string;
-    s3Path: 'users/profile' | 'admins/profile';
+    path: string;
   }): Promise<string> {
     if (opts.file) {
-      const uploaded = await this.uploadProfileImage(opts.file, opts.s3Path);
+      const uploaded = await this.upload(opts.file, opts.path);
       return uploaded ?? opts.existingUrl;
     }
 
@@ -49,13 +49,13 @@ export class FileUploadService {
     return opts.existingUrl;
   }
 
-  async replaceProfileImage(newUrl: string, oldUrl: string): Promise<void> {
+  async replace(newUrl: string, oldUrl: string): Promise<void> {
     if (newUrl !== oldUrl && oldUrl) {
       await this.s3ClientUtils.deleteObject(oldUrl);
     }
   }
 
-  async deleteProfileImage(url: string): Promise<void> {
+  async remove(url: string): Promise<void> {
     if (url) {
       await this.s3ClientUtils.deleteObject(url);
     }

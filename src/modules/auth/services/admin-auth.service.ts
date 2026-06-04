@@ -160,13 +160,12 @@ export class AdminAuthService {
       email?: string;
     };
 
-    const newProfileImageUrl =
-      await this.fileUploadService.resolveProfileImageUrl({
-        file,
-        bodyUrl: dto.profileImageUrl,
-        existingUrl: admin.profileImageUrl || '',
-        s3Path: 'admins/profile',
-      });
+    const newProfileImageUrl = await this.fileUploadService.resolveUrl({
+      file,
+      bodyUrl: dto.profileImageUrl,
+      existingUrl: admin.profileImageUrl || '',
+      path: 'admins/profile',
+    });
 
     const updatedAdmin = await this.adminService.preloadEntity({
       id: userId,
@@ -183,10 +182,7 @@ export class AdminAuthService {
 
     const savedAdmin = await this.adminService.saveEntity(updatedAdmin);
 
-    await this.fileUploadService.replaceProfileImage(
-      newProfileImageUrl,
-      admin.profileImageUrl || '',
-    );
+    await this.fileUploadService.replace(newProfileImageUrl, admin.profileImageUrl || '');
 
     this.logger.log(`Admin with ID '${admin.id}' profile updated successfully`);
     return savedAdmin;

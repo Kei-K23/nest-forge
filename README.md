@@ -89,31 +89,64 @@ A production-ready NestJS API foundation with integrated authentication, authori
 
 ## Project Structure
 
+The project follows a **modular monolith** architecture with a clear separation between the API layer, domain modules, and infrastructure.
+
 ```
 src/
-├── v1/                             # Versioned API routes
-│   ├── auth/                       # Authentication & token management
-│   ├── user/                       # End-user CRUD
-│   ├── admin/                      # Admin account management
-│   ├── otp/                        # OTP lifecycle (verify, expire, throttle)
-│   ├── log/                        # Activity & audit log queries
-│   └── setting/                    # Application settings (SMTP config)
-├── common/                         # Shared infrastructure
-│   ├── config/                     # Environment validation (Joi schema)
-│   ├── decorators/                 # @Public, @CurrentUser, @Roles, @RequirePermissions, etc.
-│   ├── dto/                        # Shared data transfer objects (pagination, etc.)
+├── api/v1/                         # API layer — controllers only (thin, no business logic)
+│   ├── auth/                       # Auth, roles, and permissions controllers
+│   ├── admin/                      # Admin CRUD controller
+│   ├── user/                       # User CRUD controller
+│   ├── log/                        # Activity & audit log controllers
+│   └── setting/                    # Application settings controller
+├── modules/                        # Domain layer — business logic, entities, DTOs
+│   ├── auth/                       # Auth services, guards, strategies, decorators, entities
+│   │   ├── decorators/             # @Public, @CurrentUser, @Roles, @RequirePermissions, @CheckOwnership
+│   │   ├── dto/                    # Auth-related DTOs
+│   │   ├── entities/               # Role, Permission, RolePermission, RefreshToken, Module entities
+│   │   ├── events/                 # Domain events (e.g. TwoFactorCodeRequestedEvent)
+│   │   ├── guards/                 # JwtAuthGuard, RolesGuard, PermissionsGuard, ResourceOwnershipGuard
+│   │   ├── interfaces/             # AuthUser interface
+│   │   ├── seeders/                # Auth seeder (roles, permissions, superadmin)
+│   │   ├── services/               # AdminAuthService, UserAuthService, TokenService, etc.
+│   │   └── strategies/             # JwtStrategy
+│   ├── admin/                      # Admin entity, service, DTOs
+│   ├── user/                       # User entity, service, DTOs
+│   ├── otp/                        # OTP entity and service
+│   ├── role/                       # Role module (re-exports from auth module)
+│   ├── log/                        # Activity & audit logging
+│   │   ├── decorators/             # @LogActivity
+│   │   ├── entities/               # ActivityLog, AuditLog entities
+│   │   ├── events/                 # Log domain events
+│   │   ├── interceptors/           # ActivityLogInterceptor
+│   │   ├── listeners/              # LogListener (event → persistence)
+│   │   ├── services/               # ActivityLogService, AuditLogService
+│   │   └── utils/                  # Audit log metadata helpers
+│   └── setting/                    # Setting entity, service, DTOs, seeder
+├── infrastructure/                 # Infrastructure layer
+│   ├── database/
+│   │   └── migrations/             # TypeORM migration files
+│   ├── health/                     # /health endpoint (database + memory checks)
+│   └── notification/               # BullMQ email/SMS processors and event listeners
+│       ├── constants/              # Queue name constants
+│       ├── interfaces/             # Notification job payload interfaces
+│       ├── listeners/              # TwoFactorCodeListener
+│       └── processors/             # EmailProcessor, SmsProcessor
+├── common/                         # Shared cross-cutting concerns
+│   ├── config/                     # Environment validation (Joi schema), logger config
+│   ├── decorators/                 # @RequestTimeout, @ResolvePresignedUrls
+│   ├── dto/                        # Shared DTOs (pagination, filters)
 │   ├── entities/                   # BaseEntity, AuditEntity
 │   ├── filters/                    # Exception filters (HTTP, DB, throttler, catch-all)
-│   ├── interceptors/               # Response, timeout, presigned URL, activity log
+│   ├── interceptors/               # ResponseInterceptor, TimeoutInterceptor, PresignedUrlInterceptor
+│   ├── interfaces/                 # ApiResponse interface
 │   ├── middleware/                 # RequestIdMiddleware
+│   ├── mixins/                     # PasswordHashMixin
 │   ├── services/                   # FileUploadService, StartupService
 │   ├── transaction/                # @Transactional decorator + AsyncLocalStorage context
-│   └── utils/                      # Email, SMS, OTP mock, password hash, request context
-├── database/
-│   └── migrations/                 # TypeORM migration files
-├── notification/                   # BullMQ email/SMS processors and event listeners
-├── health/                         # /health endpoint
-├── seeders/                        # Database seeder for initial data
+│   ├── utils/                      # Email, SMS, OTP mock, password hash, S3 client, etc.
+│   └── validators/                 # Custom class-validator validators (e.g. NRC format)
+├── seeders/                        # Root seeder entry points (seed.ts, clear.ts)
 ├── types/                          # Global TypeScript type extensions
 ├── main.ts                         # Application bootstrap
 ├── app.module.ts                   # Root module
@@ -184,7 +217,7 @@ The API will be available at `http://localhost:3000`.
 
 ## Environment Variables
 
-All variables are validated on startup using a Joi schema defined in [src/common/config/env.validation.ts](src/common/config/env.validation.ts). The application refuses to start if required values are missing or malformed.
+All variables are validated on startup using a Joi schema defined in [src/common/config/env.validation.ts](src/common/config/env.validation.ts) and [src/common/config/logger.config.ts](src/common/config/logger.config.ts). The application refuses to start if required values are missing or malformed.
 
 ### Required
 
@@ -234,7 +267,7 @@ All variables are validated on startup using a Joi schema defined in [src/common
 
 ### Migrations
 
-This project uses TypeORM migrations exclusively — `synchronize` is disabled in all environments. Never edit a migration file after it has been applied to any environment.
+This project uses TypeORM migrations exclusively — `synchronize` is disabled in all environments. Migration files live in `src/infrastructure/database/migrations/`. Never edit a migration file after it has been applied to any environment.
 
 ```bash
 # Generate a new migration from entity changes
@@ -434,25 +467,28 @@ Three guards run globally on every request (in order):
 ### Decorators
 
 ```typescript
-// Skip JWT authentication entirely
+// Skip JWT authentication entirely  [modules/auth/decorators]
 @Public()
 
-// Require the caller to have one of these roles
+// Require the caller to have one of these roles  [modules/auth/decorators]
 @Roles('superadmin', 'manager')
 
-// Require a specific permission
+// Require a specific permission  [modules/auth/decorators]
 @RequirePermissions({ action: 'DELETE', module: 'USER' })
 
-// Inject the authenticated user into a controller parameter
+// Inject the authenticated user into a controller parameter  [modules/auth/decorators]
 @CurrentUser() user: AuthUser
 
-// Override the default request timeout for this endpoint
+// Assert that the authenticated user owns the target resource  [modules/auth/decorators]
+@CheckOwnership()
+
+// Override the default request timeout for this endpoint  [common/decorators]
 @RequestTimeout(5000)
 
-// Auto-resolve S3 presigned URLs for the named field in the response
+// Auto-resolve S3 presigned URLs for the named field in the response  [common/decorators]
 @ResolvePresignedUrls('profileImageUrl')
 
-// Emit an activity log entry when this endpoint is called
+// Emit an activity log entry when this endpoint is called  [modules/log/decorators]
 @LogActivity({ action: 'UPDATE', resourceType: 'USER' })
 ```
 
@@ -460,20 +496,29 @@ Three guards run globally on every request (in order):
 
 ## Architecture
 
+### Modular Monolith Layers
+
+| Layer | Path | Responsibility |
+|---|---|---|
+| **API** | `src/api/v1/` | Controllers — route binding, request parsing, response shaping |
+| **Domain** | `src/modules/` | Business logic, entities, domain events, guards, decorators |
+| **Infrastructure** | `src/infrastructure/` | Database migrations, health checks, async notification queues |
+| **Common** | `src/common/` | Cross-cutting concerns shared across all layers |
+
 ### Request Lifecycle
 
 ```
 Incoming Request
-  └── RequestIdMiddleware       Assigns X-Request-ID correlation header
-  └── ThrottlerGuard            Enforces rate limits
-  └── JwtAuthGuard              Validates JWT, populates request.user
-  └── RolesGuard                Checks role requirements
-  └── PermissionsGuard          Checks permission requirements
-  └── TimeoutInterceptor        Enforces request timeout
-  └── ActivityLogInterceptor    Captures action metadata for logging
-  └── ResponseInterceptor       Wraps response in standard envelope
-  └── Controller / Service      Business logic
-  └── PresignedUrlInterceptor   Resolves S3 presigned URLs
+  └── RequestIdMiddleware             Assigns X-Request-ID correlation header
+  └── ThrottlerGuard                  Enforces rate limits
+  └── JwtAuthGuard                    Validates JWT, populates request.user
+  └── RolesGuard                      Checks role requirements
+  └── PermissionsGuard                Checks permission requirements
+  └── TimeoutInterceptor              Enforces request timeout
+  └── ActivityLogInterceptor          Captures action metadata for logging
+  └── ResponseInterceptor             Wraps response in standard envelope
+  └── Controller / Service            Business logic
+  └── PresignedUrlInterceptor         Resolves S3 presigned URLs
   └── Outgoing Response
 ```
 
@@ -483,9 +528,9 @@ Email and SMS notifications are decoupled from the request lifecycle via BullMQ:
 
 ```
 Event fired (e.g. 2FA code requested)
-  └── EventEmitter2 → TwoFactorCodeListener
+  └── EventEmitter2 → TwoFactorCodeListener (infrastructure/notification/listeners)
   └── Job added to BullMQ email or SMS queue
-  └── EmailProcessor / SmsProcessor picks up job
+  └── EmailProcessor / SmsProcessor picks up job  (infrastructure/notification/processors)
   └── Notification sent
 ```
 
