@@ -1,29 +1,29 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bullmq';
+import { CacheModule } from '@nestjs/cache-manager';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
-import { envValidationSchema } from './common/config/env.validation';
-import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
-import { BullModule } from '@nestjs/bullmq';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { UserModule } from 'src/modules/user/user.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { redisStore } from 'cache-manager-redis-store';
+import { HealthModule } from 'src/infrastructure/health/health.module';
+import { NotificationModule } from 'src/infrastructure/notification/notification.module';
+import { AdminModule } from 'src/modules/admin/admin.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
+import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
 import { ActivityLogModule } from 'src/modules/log/activity-log.module';
 import { ActivityLogInterceptor } from 'src/modules/log/interceptors/activity-log.interceptor';
-import { SettingModule } from 'src/modules/setting/setting.module';
-import { AdminModule } from 'src/modules/admin/admin.module';
 import { RoleModule } from 'src/modules/role/role.module';
+import { SettingModule } from 'src/modules/setting/setting.module';
+import { UserModule } from 'src/modules/user/user.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 import { CommonModule } from './common/common.module';
+import { envValidationSchema } from './common/config/env.validation';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import dataSource from './data-source';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { ScheduleModule } from '@nestjs/schedule';
-import { EventEmitterModule } from '@nestjs/event-emitter';
-import { CacheModule } from '@nestjs/cache-manager';
-import { redisStore } from 'cache-manager-redis-store';
-import { NotificationModule } from 'src/infrastructure/notification/notification.module';
-import { HealthModule } from 'src/infrastructure/health/health.module';
 
 @Module({
   imports: [
@@ -33,6 +33,7 @@ import { HealthModule } from 'src/infrastructure/health/health.module';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
+        prefix: configService.get('REDIS_PREFIX_KEY', 'nest_forge:'),
         connection: {
           host: configService.get('REDIS_HOST', 'localhost'),
           port: configService.get<number>('REDIS_PORT', 6379),

@@ -9,6 +9,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { LoginProvider } from '../entities/user.entity';
+import { IsPassword } from '../../../common/decorators/is-password.decorator';
 
 export class CreateUserDto {
   @IsOptional()
@@ -21,9 +22,7 @@ export class CreateUserDto {
   @MaxLength(100, { message: 'Full name must not exceed 100 characters' })
   fullName!: string;
 
-  @IsString({ message: 'Password must be a string' })
-  @IsNotEmpty({ message: 'Password is required' })
-  @MinLength(8, { message: 'Password must be at least 8 characters long' })
+  @IsPassword()
   password!: string;
 
   @IsString({ message: 'Phone must be a string' })

@@ -8,6 +8,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { IsPassword } from '../../../common/decorators/is-password.decorator';
 
 export class CreateAdminDto {
   @IsString({ message: 'Full name must be a string' })
@@ -21,8 +22,7 @@ export class CreateAdminDto {
   email!: string;
 
   @IsOptional()
-  @IsString({ message: 'Password must be a string' })
-  @MinLength(8, { message: 'Password must be at least 8 characters long' })
+  @IsPassword()
   password?: string;
 
   @IsUUID('4', { message: 'Role ID must be a valid UUID' })

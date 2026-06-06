@@ -1,7 +1,7 @@
-import { Entity, Column, ManyToOne, JoinColumn, Relation } from 'typeorm';
-import { User } from 'src/modules/user/entities/user.entity';
-import { Admin } from 'src/modules/admin/entities/admin.entity';
 import { AuditEntity } from 'src/common/entities/audit.entity';
+import { Admin } from 'src/modules/admin/entities/admin.entity';
+import { User } from 'src/modules/user/entities/user.entity';
+import { Column, Entity, JoinColumn, ManyToOne, Relation } from 'typeorm';
 
 export enum OtpStatus {
   PENDING = 'PENDING',

@@ -5,6 +5,9 @@
   "author": "Kei-K23",
   "private": true,
   "license": "MIT",
+  "bin": {
+    "forge": "./cli/index.ts"
+  },
   "scripts": {
     "build": "npx nest build",
     "build:low-mem": "NODE_OPTIONS='--max-old-space-size=1536' npx nest build",
@@ -80,6 +83,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
+    "commander": "^15.0.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
