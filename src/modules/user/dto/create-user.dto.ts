@@ -9,7 +9,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { LoginProvider } from '../entities/user.entity';
-import { IsPassword } from '../../../common/decorators/is-password.decorator';
+import { IsPassword } from '../../../common/validators/is-password.validator';
 
 export class CreateUserDto {
   @IsOptional()

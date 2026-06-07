@@ -1,5 +1,5 @@
 import { IsNotEmpty, IsString, IsUUID } from 'class-validator';
-import { IsPassword } from '../../../common/decorators/is-password.decorator';
+import { IsPassword } from '../../../common/validators/is-password.validator';
 
 export class UserRegisterPasswordSetupDto {
   @IsPassword()

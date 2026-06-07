@@ -17,6 +17,7 @@ import { DatabaseExceptionFilter } from './common/filters/database-exception.fil
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ThrottlerExceptionFilter } from './common/filters/throttler-exception.filter';
 import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
+import { TrimPipe } from './common/pipes/trim.pipe';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -91,6 +92,7 @@ async function bootstrap() {
 
   // Enable global validation pipe
   app.useGlobalPipes(
+    new TrimPipe(),
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,

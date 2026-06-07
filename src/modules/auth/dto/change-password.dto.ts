@@ -1,5 +1,5 @@
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
-import { IsPassword } from '../../../common/decorators/is-password.decorator';
+import { IsPassword } from '../../../common/validators/is-password.validator';
 
 export class ChangePasswordDto {
   @IsString({ message: 'Current password must be a string' })

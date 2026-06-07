@@ -1,0 +1,1396 @@
+# nest-forge — Architecture & Development Standards
+
+> **Audience:** Backend developers joining the nest-forge ecosystem.
+> **Purpose:** Understand how the project is structured, why decisions were made, and how to contribute correctly.
+
+---
+
+## Table of Contents
+
+1. [What Is Modular Monolith?](#1-what-is-modular-monolith)
+2. [Technology Stack](#2-technology-stack)
+3. [Project Directory Structure](#3-project-directory-structure)
+4. [The Four-Zone Architecture](#4-the-four-zone-architecture)
+5. [Module Structure — The Golden Template](#5-module-structure--the-golden-template)
+6. [Request Lifecycle](#6-request-lifecycle)
+7. [Response Format Standards](#7-response-format-standards)
+8. [Authentication & Authorization](#8-authentication--authorization)
+9. [Database & Entity Standards](#9-database--entity-standards)
+10. [Error Handling](#10-error-handling)
+11. [Logging & Observability](#11-logging--observability)
+12. [File Uploads (AWS S3)](#12-file-uploads-aws-s3)
+13. [Async Notifications (BullMQ)](#13-async-notifications-bullmq)
+14. [Validation Standards](#14-validation-standards)
+15. [Transaction Management](#15-transaction-management)
+16. [Key Decorators Reference](#16-key-decorators-reference)
+17. [Environment Variables](#17-environment-variables)
+18. [Database Migrations & Seeding](#18-database-migrations--seeding)
+19. [Best Practices & Rules](#19-best-practices--rules)
+20. [Common Mistakes to Avoid](#20-common-mistakes-to-avoid)
+21. [Adding a New Module — Step-by-Step](#21-adding-a-new-module--step-by-step)
+
+---
+
+## 1. What Is Modular Monolith?
+
+### The Problem With Two Extremes
+
+| Traditional Monolith | Microservices |
+|----------------------|---------------|
+| Fast to start, turns into a spaghetti mess | Clean boundaries, but complex infrastructure |
+| One codebase, zero network overhead | Network latency, distributed tracing, service discovery |
+| Hard to scale specific parts | Scale each service independently |
+| Refactoring is painful and risky | Independent deployment, but huge operational cost |
+
+**Modular Monolith** sits in the sweet spot:
+
+- **One deployable unit** (monolith) — simple CI/CD, no network overhead between modules
+- **Strict domain boundaries** (modular) — each module owns its data, logic, and API
+- **Migration-ready** — if a module needs to become a microservice, boundaries are already clean
+
+### Core Principles
+
+```
+┌─────────────────────────────────────────────────────┐
+│                     API Layer                        │
+│         (HTTP Controllers — thin, no logic)          │
+├─────────────────────────────────────────────────────┤
+│                   Domain Layer                       │
+│   ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│   │   Auth   │  │   User   │  │   Setting  ...   │  │
+│   │  Module  │  │  Module  │  │   Module         │  │
+│   └──────────┘  └──────────┘  └──────────────────┘  │
+│   Each module = its own entities, services, DTOs     │
+├─────────────────────────────────────────────────────┤
+│                Infrastructure Layer                  │
+│      (Database, Queues, Health — no biz logic)       │
+├─────────────────────────────────────────────────────┤
+│                   Common Layer                       │
+│     (Shared decorators, filters, interceptors)       │
+└─────────────────────────────────────────────────────┘
+```
+
+**Rule:** Layers only communicate downward. API → Domain → Infrastructure. Domain modules communicate through **service interfaces**, never through direct database access into another module's entities.
+
+---
+
+## 2. Technology Stack
+
+| Category | Technology | Version |
+|----------|-----------|---------|
+| Framework | NestJS | v11 |
+| Language | TypeScript | 5.9 |
+| Database | PostgreSQL + TypeORM | 0.3 |
+| Cache / Queues | Redis + BullMQ | Latest |
+| Auth | JWT + bcryptjs + Passport | — |
+| File Storage | AWS S3 | — |
+| Validation | class-validator + class-transformer | — |
+| Env Validation | Joi | — |
+| Logging | Winston + daily-rotate-file | — |
+| Testing | Jest | — |
+| Process Manager | PM2 | Production |
+
+---
+
+## 3. Project Directory Structure
+
+```
+nest-forge/
+├── src/
+│   ├── api/v1/                      ← HTTP Layer (Controllers ONLY)
+│   │   ├── auth/
+│   │   │   ├── auth.controller.ts
+│   │   │   ├── role.controller.ts
+│   │   │   └── permissions.controller.ts
+│   │   ├── admin/
+│   │   │   └── admin.controller.ts
+│   │   ├── user/
+│   │   │   └── user.controller.ts
+│   │   ├── log/
+│   │   │   └── activity-log.controller.ts
+│   │   └── setting/
+│   │       └── setting.controller.ts
+│   │
+│   ├── modules/                     ← Domain Layer (Business Logic)
+│   │   ├── auth/                    # Auth, RBAC, JWT, guards, strategies
+│   │   │   ├── decorators/
+│   │   │   ├── dto/
+│   │   │   ├── entities/
+│   │   │   ├── events/
+│   │   │   ├── guards/
+│   │   │   ├── interfaces/
+│   │   │   ├── seeders/
+│   │   │   ├── services/
+│   │   │   ├── strategies/
+│   │   │   ├── auth.module.ts
+│   │   │   └── index.ts             # Public API barrel — always import from here
+│   │   ├── user/
+│   │   │   ├── dto/
+│   │   │   ├── entities/
+│   │   │   ├── services/
+│   │   │   ├── user.module.ts
+│   │   │   └── index.ts
+│   │   ├── admin/
+│   │   ├── otp/
+│   │   ├── log/
+│   │   ├── setting/
+│   │   └── role/                    # Re-exports from auth module
+│   │
+│   ├── infrastructure/              ← Technical Plumbing (No Business Logic)
+│   │   ├── database/
+│   │   │   └── migrations/          # TypeORM migrations
+│   │   ├── health/                  # /health endpoint
+│   │   └── notification/            # BullMQ email/SMS queues
+│   │
+│   ├── common/                      ← Shared Cross-Cutting Concerns
+│   │   ├── config/                  # Env validation, logger config
+│   │   ├── decorators/              # @RequestTimeout, @ResolvePresignedUrls
+│   │   ├── dto/                     # PaginationFilterDto
+│   │   ├── entities/                # BaseEntity, AuditEntity
+│   │   ├── filters/                 # Exception filters
+│   │   ├── interceptors/            # Response, Timeout, PresignedUrl
+│   │   ├── interfaces/              # ApiResponse<T>
+│   │   ├── middleware/              # RequestId middleware
+│   │   ├── pipes/                   # TrimPipe (global string trimming)
+│   │   ├── services/                # FileUploadService, StartupService
+│   │   ├── transaction/             # @Transactional decorator
+│   │   ├── utils/                   # S3, email, SMS, password, date utils
+│   │   └── validators/              # Custom validators (NRC, password)
+│   │
+│   ├── seeders/                     # Database seeding scripts
+│   ├── types/                       # TypeScript ambient declarations
+│   ├── app.module.ts                # Root module
+│   ├── main.ts                      # Entry point
+│   └── data-source.ts               # TypeORM DataSource config
+│
+├── cli/                             # forge CLI — database operations
+│   ├── index.ts                     # Entry point: `forge` binary
+│   └── commands/
+│       ├── db.ts                    # `forge db` command group
+│       ├── migrate.ts               # `forge db migrate *` sub-commands
+│       └── seed.ts                  # `forge db seed/clear/reset` sub-commands
+├── logs/                            # Winston daily log files
+├── dist/                            # Compiled output
+└── ...config files
+```
+
+---
+
+## 4. The Four-Zone Architecture
+
+Understanding these four zones is **mandatory** before writing any code.
+
+### Zone 1: `api/v1/` — HTTP Layer
+
+**Responsibility:** Receive HTTP requests, delegate to services, return responses.
+
+**Rules:**
+- Controllers contain **zero business logic**
+- No database queries, no data transformation
+- Only call service methods and return the result
+- Always version under `v1/` (or `v2/` for new versions)
+
+```typescript
+// ✅ CORRECT — thin controller
+@Post()
+@LogActivity({ action: LogAction.CREATE, module: 'ADMIN' })
+async create(@Body() dto: CreateAdminDto) {
+  return this.adminService.create(dto);
+}
+
+// ❌ WRONG — business logic in controller
+@Post()
+async create(@Body() dto: CreateAdminDto) {
+  const existing = await this.adminRepository.findOne({ where: { email: dto.email } });
+  if (existing) throw new ConflictException('Email taken');
+  const hashed = await bcrypt.hash(dto.password, 10);
+  return this.adminRepository.save({ ...dto, password: hashed });
+}
+```
+
+### Zone 2: `modules/` — Domain Layer
+
+**Responsibility:** All business logic. This is where your application's value lives.
+
+Each module contains:
+- `entities/` — TypeORM entities (the data model)
+- `dto/` — Data Transfer Objects for input validation
+- `services/` — Business logic
+- `events/` — Domain events for cross-module communication
+- `index.ts` — Public API (what other modules can import)
+
+**Rules:**
+- A module **only accesses its own entities**
+- To use another module's data, call that module's **exported service**
+- Always expose a public API via `index.ts`
+
+### Zone 3: `infrastructure/` — Technical Layer
+
+**Responsibility:** Database migrations, health checks, message queues. No business logic.
+
+### Zone 4: `common/` — Shared Layer
+
+**Responsibility:** Reusable technical utilities shared across all modules.
+
+Includes: filters, interceptors, base entities, shared DTOs, utility functions.
+
+---
+
+## 5. Module Structure — The Golden Template
+
+Every new domain module **must** follow this exact structure:
+
+```
+modules/
+└── product/                         ← Your new module
+    ├── dto/
+    │   ├── create-product.dto.ts
+    │   ├── update-product.dto.ts
+    │   └── filter-product.dto.ts
+    ├── entities/
+    │   └── product.entity.ts
+    ├── services/
+    │   └── product.service.ts
+    ├── product.module.ts
+    └── index.ts                     ← Public API barrel
+```
+
+### `index.ts` — The Public API Barrel
+
+```typescript
+// modules/product/index.ts
+export { ProductModule } from './product.module';
+export { ProductService } from './services/product.service';
+export { Product } from './entities/product.entity';
+export { CreateProductDto } from './dto/create-product.dto';
+```
+
+Other modules import from `index.ts` only:
+```typescript
+// ✅ CORRECT
+import { ProductService } from '@modules/product';
+
+// ❌ WRONG — deep import bypasses module boundary
+import { ProductService } from '@modules/product/services/product.service';
+```
+
+---
+
+## 6. Request Lifecycle
+
+Every HTTP request passes through this pipeline in order:
+
+```
+Incoming HTTP Request
+        │
+        ▼
+┌─────────────────────┐
+│  RequestIdMiddleware │  Generates/reads X-Request-ID header
+└─────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│    ThrottlerGuard    │  Rate limiting (global: 100 req/min)
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│     JwtAuthGuard     │  Validates JWT, attaches request.user
+│  (skips if @Public)  │  request.user = { sub, subjectType, roleId, ... }
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│  RolesGuard /        │  Checks @Roles() and @RequirePermissions()
+│  PermissionsGuard    │
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│ ResourceOwnership    │  Validates @CheckOwnership() if present
+│      Guard           │
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│  TimeoutInterceptor  │  Enforces 10s default timeout
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│ ActivityLog          │  Captures @LogActivity metadata
+│  Interceptor         │
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│      TrimPipe        │  Strips leading/trailing whitespace from all body & query strings
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│  ValidationPipe      │  Validates & transforms DTO fields (whitelist, forbidNonWhitelisted)
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│  Controller Method   │  Your handler runs here
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│ ResponseInterceptor  │  Wraps result in standardized ApiResponse<T>
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│ PresignedUrl         │  Converts S3 file keys to presigned URLs
+│  Interceptor         │
+└──────────────────────┘
+        │
+        ▼
+┌──────────────────────┐
+│ ClassSerializer      │  Strips @Exclude() fields (passwords, etc.)
+│  Interceptor         │
+└──────────────────────┘
+        │
+        ▼
+     HTTP Response
+```
+
+---
+
+## 7. Response Format Standards
+
+**All** API responses — success and error — follow a unified structure. The `ResponseInterceptor` handles this automatically.
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Data retrieved successfully",
+  "data": { },
+  "apiVersion": "v1",
+  "timestamp": "2025-06-07T12:00:00.000Z"
+}
+```
+
+### Paginated Response
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Data retrieved successfully",
+  "data": [ ],
+  "meta": {
+    "total": 100,
+    "page": 1,
+    "limit": 10,
+    "totalPages": 10
+  },
+  "apiVersion": "v1",
+  "timestamp": "2025-06-07T12:00:00.000Z"
+}
+```
+
+### Error Response
+
+```json
+{
+  "success": false,
+  "statusCode": 422,
+  "message": "Validation failed",
+  "error": "Unprocessable Entity",
+  "details": ["email must be a valid email address"],
+  "apiVersion": "v1",
+  "timestamp": "2025-06-07T12:00:00.000Z"
+}
+```
+
+### How to Use `ResponseUtil`
+
+The `ResponseInterceptor` wraps return values automatically. But when you need manual control:
+
+```typescript
+import { ResponseUtil } from '@common/utils/response.util';
+
+// In a service or when bypassing the interceptor
+return ResponseUtil.success(data, 'Created successfully');
+return ResponseUtil.paginated(items, total, page, limit);
+return ResponseUtil.error('Something went wrong', 500);
+```
+
+---
+
+## 8. Authentication & Authorization
+
+### How JWT Works in This Project
+
+```
+Client sends: Authorization: Bearer <accessToken>
+                                        │
+                              JwtStrategy extracts payload:
+                              {
+                                sub: "uuid",
+                                subjectType: "USER" | "ADMIN",
+                                userId?: "uuid",
+                                adminId?: "uuid",
+                                roleId?: "uuid",
+                                ...
+                              }
+                                        │
+                              Attaches to request.user
+```
+
+### Getting the Current User in a Controller
+
+```typescript
+import { CurrentUser } from '@modules/auth';
+import { AuthenticatedUser } from '@modules/auth';
+
+@Get('profile')
+getProfile(@CurrentUser() user: AuthenticatedUser) {
+  return this.userService.findById(user.sub);
+}
+```
+
+### Making an Endpoint Public
+
+```typescript
+import { Public } from '@modules/auth';
+
+@Get('status')
+@Public()
+getStatus() {
+  return { status: 'ok' };
+}
+```
+
+### Role-Based Access Control
+
+```typescript
+import { Roles, RequirePermissions } from '@modules/auth';
+import { PermissionModule } from '@modules/auth';
+
+// Only admins with role 'superadmin' or 'editor'
+@Roles('superadmin', 'editor')
+@Get()
+findAll() { ... }
+
+// Fine-grained permission check
+@RequirePermissions({
+  module: PermissionModule.ADMIN,
+  permission: 'create'
+})
+@Post()
+create(@Body() dto: CreateAdminDto) { ... }
+```
+
+### Dual Authentication — User vs Admin
+
+The system has two distinct authenticated subjects. **Always check `subjectType`** when authorization depends on it.
+
+| Property | User | Admin |
+|----------|------|-------|
+| `subjectType` | `'USER'` | `'ADMIN'` |
+| Identifier | `userId` | `adminId` |
+| Login method | Phone + Password / OAuth | Email + Password (+ 2FA) |
+| Has roles | No | Yes |
+| Has permissions | No | Yes |
+
+### User Registration State Machine
+
+Users cannot log in until they reach `COMPLETED` state.
+
+```
+POST /auth/register/otp          → sends OTP to phone
+        │
+        ▼ (OTP verified)
+POST /auth/register/otp/verify   → registrationStage = OTP_VERIFIED
+        │
+        ▼
+POST /auth/register/password     → registrationStage = PASSWORD_SET
+        │
+        ▼
+POST /auth/register/profile      → registrationStage = COMPLETED ✓
+```
+
+---
+
+## 9. Database & Entity Standards
+
+### Base Entity — Extend This Always
+
+Every entity **must** extend `BaseEntity`:
+
+```typescript
+// src/common/entities/base.entity.ts
+@Entity()
+export class BaseEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @DeleteDateColumn()
+  deletedAt: Date | null;   // Soft delete — never physically delete rows
+}
+```
+
+### Creating an Entity
+
+```typescript
+import { BaseEntity } from '@common/entities/base.entity';
+
+@Entity('products')
+export class Product extends BaseEntity {
+  @Column({ length: 255 })
+  name: string;
+
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  price: number;
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'created_by' })
+  createdBy: User | null;
+}
+```
+
+### Entity Rules
+
+| Rule | Reason |
+|------|--------|
+| Always extend `BaseEntity` | UUID PK, timestamps, soft delete included |
+| Use soft deletes only (`DeleteDateColumn`) | Data is auditable, recoverable |
+| Name tables explicitly with snake_case `@Entity('table_name')` | Avoids TypeORM naming surprises |
+| Use `nullable: true` explicitly when a column can be null | TypeORM defaults vary |
+| Exclude sensitive fields with `@Exclude()` | `ClassSerializerInterceptor` strips them automatically |
+
+```typescript
+import { Exclude } from 'class-transformer';
+
+@Column({ select: false })
+@Exclude()
+password: string;
+```
+
+### Migrations — Never Use `synchronize: true`
+
+`synchronize: true` is **disabled** in production. Always generate migrations:
+
+```bash
+# After changing an entity — provide the output path (TypeORM v0.3 syntax):
+npm run migration:generate src/infrastructure/database/migrations/AddProductTable
+
+# Apply migrations:
+npm run migration:run
+
+# Revert last migration:
+npm run migration:revert
+```
+
+---
+
+## 10. Error Handling
+
+### Exception Filters — Automatic, No Action Needed
+
+All exceptions are caught automatically by the global exception filters. Processing order (most-specific first):
+
+```
+DatabaseExceptionFilter     ← PostgreSQL-level errors (duplicate, FK violation)
+ThrottlerExceptionFilter    ← Rate limit exceeded (429)
+HttpExceptionFilter         ← NestJS HttpException subclasses
+AllExceptionsFilter         ← Catch-all for unexpected errors
+```
+
+### PostgreSQL Error Code Mapping
+
+| PG Error Code | Meaning | HTTP Status |
+|---------------|---------|-------------|
+| `23505` | Unique constraint violation | 409 Conflict |
+| `23503` | Foreign key violation | 422 Unprocessable Entity |
+| `23502` | Not null violation | 400 Bad Request |
+| `22P02` | Invalid UUID format | 400 Bad Request |
+
+### How to Throw Errors in Services
+
+```typescript
+import {
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
+
+async findById(id: string): Promise<Admin> {
+  const admin = await this.adminRepository.findOne({ where: { id } });
+  if (!admin) {
+    throw new NotFoundException(`Admin with id "${id}" not found`);
+  }
+  return admin;
+}
+
+async create(dto: CreateAdminDto): Promise<Admin> {
+  const exists = await this.adminRepository.findOne({ where: { email: dto.email } });
+  if (exists) {
+    throw new ConflictException('An admin with this email already exists');
+  }
+  return this.adminRepository.save(dto);
+}
+```
+
+---
+
+## 11. Logging & Observability
+
+### Two Types of Logs
+
+#### Activity Log — User Actions (High Volume)
+
+Records what end-users do: login, logout, registration, profile updates.
+
+```typescript
+// On a controller method:
+import { LogActivity } from '@modules/log';
+import { LogAction } from '@modules/log';
+
+@Post('login')
+@Public()
+@LogActivity({
+  action: LogAction.LOGIN,
+  module: 'USER_AUTH',
+  description: 'User login',
+})
+async login(@Body() dto: LoginDto) {
+  return this.userAuthService.login(dto);
+}
+```
+
+#### Audit Log — Admin Changes (Compliance)
+
+Records before/after state of admin-driven data changes.
+
+```typescript
+import { attachAuditLogMetadata } from '@modules/log';
+
+async update(id: string, dto: UpdateAdminDto): Promise<Admin> {
+  const before = await this.findById(id);
+  const updated = await this.adminRepository.save({ ...before, ...dto });
+
+  attachAuditLogMetadata(updated, {
+    action: LogAction.UPDATE,
+    module: 'ADMIN',
+    before,
+    after: updated,
+  });
+
+  return updated;
+}
+```
+
+### Winston Logging in Services
+
+```typescript
+import { Logger } from '@nestjs/common';
+
+@Injectable()
+export class ProductService {
+  private readonly logger = new Logger(ProductService.name);
+
+  async create(dto: CreateProductDto) {
+    this.logger.log(`Creating product: ${dto.name}`);
+    try {
+      const product = await this.productRepository.save(dto);
+      this.logger.log(`Product created: ${product.id}`);
+      return product;
+    } catch (error) {
+      this.logger.error('Failed to create product', error.stack);
+      throw error;
+    }
+  }
+}
+```
+
+---
+
+## 12. File Uploads (AWS S3)
+
+### Service: `FileUploadService`
+
+Inject and use wherever file operations are needed:
+
+```typescript
+@Injectable()
+export class ProductService {
+  constructor(private readonly fileUploadService: FileUploadService) {}
+
+  async uploadImage(productId: string, file: Express.Multer.File) {
+    const key = await this.fileUploadService.upload(file, `products/${productId}`);
+    return key; // Store this key in the database, NOT the presigned URL
+  }
+}
+```
+
+### Auto-Converting Keys to Presigned URLs
+
+Use `@ResolvePresignedUrls()` on controller methods to auto-convert S3 keys in the response:
+
+```typescript
+@Get(':id')
+@ResolvePresignedUrls('imageKey', 'thumbnailKey')  // field names in the response
+async findOne(@Param('id') id: string) {
+  return this.productService.findById(id);
+  // Response will have imageKey replaced with a presigned URL automatically
+}
+```
+
+**Key rule:** Always store the S3 **key** (file path) in the database. Never store presigned URLs — they expire.
+
+---
+
+## 13. Async Notifications (BullMQ)
+
+Emails and SMS are **never sent synchronously** during a request. They are queued and processed by workers.
+
+### Sending a Notification
+
+```typescript
+@Injectable()
+export class ProductService {
+  constructor(private readonly notificationService: NotificationService) {}
+
+  async create(dto: CreateProductDto) {
+    const product = await this.productRepository.save(dto);
+
+    // Fire-and-forget: email queued asynchronously
+    await this.notificationService.sendEmail({
+      to: dto.ownerEmail,
+      subject: 'Product Created',
+      body: `Your product "${product.name}" has been created.`,
+    });
+
+    return product;
+  }
+}
+```
+
+### How It Works
+
+```
+Service calls notificationService.sendEmail()
+        │
+        ▼
+Job added to EMAIL_NOTIFICATION_QUEUE (Redis/BullMQ)
+        │
+        ▼ (async, non-blocking)
+EmailProcessor picks up job
+        │
+        ▼
+Nodemailer sends the email
+```
+
+---
+
+## 14. Validation Standards
+
+### DTO Structure
+
+```typescript
+import {
+  IsString,
+  IsEmail,
+  IsOptional,
+  IsEnum,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
+import { PartialType, PickType } from '@nestjs/mapped-types';
+
+export class CreateProductDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(255)
+  name: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsEnum(ProductCategory)
+  category: ProductCategory;
+}
+
+// Update DTO — all fields optional automatically
+export class UpdateProductDto extends PartialType(CreateProductDto) {}
+```
+
+### Pagination DTO — Always Extend This
+
+```typescript
+import { PaginationFilterDto } from '@common/dto/pagination-filter.dto';
+
+export class FilterProductDto extends PaginationFilterDto {
+  @IsOptional()
+  @IsEnum(ProductCategory)
+  category?: ProductCategory;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
+}
+```
+
+`PaginationFilterDto` provides: `page`, `limit`, `sortBy`, `sortOrder` — do not redefine these.
+
+### Global String Trimming
+
+A global `TrimPipe` runs **before** `ValidationPipe` on every request. It recursively trims leading and trailing whitespace from all string values in request bodies and query parameters.
+
+**Behavior:**
+
+| Input type | Behavior |
+|------------|----------|
+| `body` / `query` strings | Trimmed (e.g. `"  hello  "` → `"hello"`) |
+| Nested object fields | Trimmed recursively |
+| Array items | Each string element trimmed |
+| Route `@Param()` | **Not trimmed** — URL params are never modified |
+| Non-string values | Passed through unchanged |
+
+No action needed — this is global and automatic. Validators run on already-trimmed values, so `@MinLength(3)` on `"  ab  "` correctly fails (the trimmed value `"ab"` has length 2).
+
+```typescript
+// src/common/pipes/trim.pipe.ts — applied globally in main.ts
+app.useGlobalPipes(
+  new TrimPipe(),       // runs first
+  new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+);
+```
+
+### Global Validation Pipe Settings
+
+The global `ValidationPipe` is configured with:
+- `whitelist: true` — strips unknown fields automatically
+- `forbidNonWhitelisted: true` — throws error on unknown fields
+- `transform: true` — auto-converts `"1"` to `1`, `"true"` to `true`
+
+No action needed — this is automatic.
+
+---
+
+## 15. Transaction Management
+
+Use `@Transactional()` for operations that must succeed or fail together:
+
+```typescript
+import { Transactional } from '@common/transaction/transactional.decorator';
+
+@Injectable()
+export class OrderService {
+  @Transactional()
+  async placeOrder(dto: PlaceOrderDto): Promise<Order> {
+    // All queries in this method run in a single DB transaction
+    const order = await this.orderRepository.save({ ...dto });
+    await this.inventoryService.deductStock(dto.productId, dto.quantity);
+    await this.paymentService.charge(dto.paymentDetails);
+    // If any line throws, ALL changes are rolled back automatically
+    return order;
+  }
+}
+```
+
+**When to use `@Transactional()`:**
+- Creating multiple related records
+- Updating one record based on another
+- Any operation where partial failure would corrupt data
+
+---
+
+## 16. Key Decorators Reference
+
+### Auth Decorators
+
+| Decorator | Import From | Effect |
+|-----------|-------------|--------|
+| `@Public()` | `@modules/auth` | Bypasses JWT authentication |
+| `@CurrentUser()` | `@modules/auth` | Injects current authenticated user |
+| `@Roles('admin', 'editor')` | `@modules/auth` | Restricts by role name |
+| `@RequirePermissions({...})` | `@modules/auth` | Restricts by specific permission |
+| `@CheckOwnership()` | `@modules/auth` | Verifies resource belongs to caller |
+
+### Logging Decorators
+
+| Decorator | Import From | Effect |
+|-----------|-------------|--------|
+| `@LogActivity({...})` | `@modules/log` | Records user action to activity log |
+
+### Common Decorators
+
+| Decorator | Import From | Effect |
+|-----------|-------------|--------|
+| `@RequestTimeout(ms)` | `@common/decorators` | Overrides 10s global request timeout |
+| `@ResolvePresignedUrls(...fields)` | `@common/decorators` | Auto-converts S3 keys to URLs in response |
+
+---
+
+## 17. Environment Variables
+
+Copy `.env.example` to `.env` and fill in all values.
+
+### Required Variables
+
+```bash
+# App
+NODE_ENV=development
+PORT=3000
+APP_NAME=nest-forge
+TZ=UTC
+
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=secret
+DB_NAME=nest_forge
+
+# JWT (use strong random secrets — 32+ chars)
+JWT_SECRET=your-very-long-secret-here
+JWT_REFRESH_SECRET=another-very-long-secret-here
+JWT_EXPIRATION=900000            # 15 minutes in milliseconds
+JWT_REFRESH_EXPIRATION=2592000000  # 30 days in milliseconds
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PREFIX_KEY=nest_forge:
+
+# CORS (comma-separated origins, or '*' for development)
+CORS_ORIGINS=http://localhost:3000
+
+# AWS S3
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=...
+AWS_REGION=ap-southeast-1
+AWS_BUCKET_NAME=my-project-bucket
+
+# OTP (set to true in development to skip real SMS)
+OTP_MOCK_ENABLED=true
+OTP_MOCK_CODE=000000
+SMS_MOCK_ENABLED=true
+
+# OAuth
+GOOGLE_CLIENT_ID=...
+APPLE_CLIENT_ID=...
+```
+
+---
+
+## 18. Database Migrations & Seeding
+
+### The `forge` CLI
+
+The project ships a purpose-built CLI at `cli/` that wraps all database operations under a single `forge db` command tree. It is registered as a local binary in `package.json`:
+
+```json
+"bin": { "forge": "./cli/index.ts" }
+```
+
+Run it directly with `npx forge` or install locally:
+
+```bash
+npx ts-node cli/index.ts db --help
+```
+
+**Why use `forge` instead of raw `npm run` scripts?**
+
+| | `forge` CLI | `npm run migration:*` |
+|---|---|---|
+| Migration output path | Enforced to `src/infrastructure/database/migrations/` | Must be typed manually (full path) |
+| Naming | Just pass the name: `AddProductTable` | Full path required |
+| Discoverability | `forge db --help` lists all sub-commands | Must read `package.json` |
+| Seeding | `forge db seed / clear / reset` | `npm run db:seed / db:clear / db:reset` |
+
+### `forge db` Command Tree
+
+```
+forge db
+├── migrate
+│   ├── generate <name>   Generate a migration into src/infrastructure/database/migrations/
+│   ├── run               Apply all pending migrations
+│   └── revert            Revert the last applied migration
+├── seed                  Run all seeders
+├── clear                 Delete all data
+└── reset                 clear + seed in sequence
+```
+
+### Migration Commands
+
+```bash
+# Generate a new migration — just provide the name, path is enforced automatically
+npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate AddProductTable
+# Creates: src/infrastructure/database/migrations/<timestamp>-AddProductTable.ts
+
+# Apply all pending migrations
+npx ts-node -r tsconfig-paths/register cli/index.ts db migrate run
+
+# Revert the last applied migration
+npx ts-node -r tsconfig-paths/register cli/index.ts db migrate revert
+```
+
+Equivalent `npm run` aliases (for quick use in development):
+
+```bash
+npm run migration:generate src/infrastructure/database/migrations/AddProductTable
+npm run migration:run
+npm run migration:revert
+
+# Production (compiled JS):
+npm run migration:run:prod
+npm run migration:revert:prod
+```
+
+> **Tip:** Always review the generated migration file before running it. TypeORM infers the schema diff but can emit unexpected `DROP COLUMN` statements when column options change.
+
+### Seeding Commands
+
+```bash
+# Seed the database (creates roles, permissions, superadmin, settings)
+npx ts-node -r tsconfig-paths/register cli/index.ts db seed
+
+# Clear all data
+npx ts-node -r tsconfig-paths/register cli/index.ts db clear
+
+# Reset = clear + seed (sequential, exits on clear failure)
+npx ts-node -r tsconfig-paths/register cli/index.ts db reset
+```
+
+Equivalent `npm run` aliases:
+
+```bash
+npm run db:seed
+npm run db:clear
+npm run db:reset
+```
+
+**Seeding creates:**
+- Default roles: `superadmin`, `admin`, `editor`, `viewer`
+- All permissions for all modules
+- Superadmin account (credentials from env vars)
+- Default application settings
+
+---
+
+## 19. Best Practices & Rules
+
+### Architecture Rules (Non-Negotiable)
+
+1. **Never put business logic in a controller.** Controllers call services and return.
+2. **Never access another module's repository directly.** Use that module's exported service.
+3. **Always import from the module's `index.ts`.** No deep imports into module internals.
+4. **Always extend `BaseEntity`.** No entity without UUID, timestamps, and soft delete.
+5. **Never use `synchronize: true`** in TypeORM config. Always write migrations.
+6. **Never store presigned URLs in the database.** Store the S3 key only.
+7. **Never send emails/SMS synchronously.** Always queue them via `NotificationService`.
+8. **Always validate environment variables.** Add new vars to the Joi schema in `env.validation.ts`.
+
+### Code Quality Rules
+
+```typescript
+// ✅ Use readonly for injected dependencies
+constructor(private readonly userService: UserService) {}
+
+// ✅ Use explicit return types on service methods
+async findAll(filter: FilterUserDto): Promise<[User[], number]> { ... }
+
+// ✅ Use PartialType for update DTOs
+export class UpdateUserDto extends PartialType(CreateUserDto) {}
+
+// ✅ Use @Exclude() on sensitive entity fields
+@Column()
+@Exclude()
+password: string;
+
+// ✅ Always log with context
+private readonly logger = new Logger(UserService.name);
+
+// ❌ Never use console.log
+console.log('something happened');  // Use this.logger.log() instead
+
+// ❌ Never catch errors silently
+try {
+  await something();
+} catch (e) {
+  // silent catch — this hides bugs
+}
+```
+
+### Security Rules
+
+1. Hash passwords with bcryptjs — use `PasswordHashUtil`, never roll your own
+2. Never log passwords, tokens, or secrets
+3. Always validate and sanitize input — DTOs with class-validator handle this
+4. Use parameterized queries — TypeORM repository methods are safe by default
+5. Rate limiting is global — add stricter limits on auth endpoints with `@Throttle()`
+
+---
+
+## 20. Common Mistakes to Avoid
+
+| Mistake | Correct Approach |
+|---------|-----------------|
+| Importing deep into a module (`@modules/auth/services/token.service`) | Import from barrel: `@modules/auth` |
+| Injecting `UserRepository` in `AuthService` | Call `UserService.findByPhone()` instead |
+| Calling `synchronize: true` in TypeORM config | Generate and run migrations |
+| Storing presigned S3 URLs in the database | Store the S3 key; resolve URLs at response time |
+| Sending emails inside a request handler | Queue via `NotificationService` |
+| Throwing raw `Error` objects | Throw NestJS `HttpException` subclasses |
+| Using `console.log` for debugging | Use `Logger` from `@nestjs/common` |
+| Forgetting `@Exclude()` on password fields | Always add `@Exclude()` to sensitive columns |
+| Writing business logic in a controller | Move all logic to the service |
+| Creating entities without extending `BaseEntity` | Always extend `BaseEntity` |
+
+---
+
+## 21. Adding a New Module — Step-by-Step
+
+Follow this checklist when creating a new domain module (example: `product`).
+
+### Step 1 — Create the Directory Structure
+
+```bash
+mkdir -p src/modules/product/{dto,entities,services}
+touch src/modules/product/product.module.ts
+touch src/modules/product/index.ts
+```
+
+### Step 2 — Create the Entity
+
+```typescript
+// src/modules/product/entities/product.entity.ts
+import { Entity, Column } from 'typeorm';
+import { BaseEntity } from '@common/entities/base.entity';
+
+@Entity('products')
+export class Product extends BaseEntity {
+  @Column({ length: 255 })
+  name: string;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  price: number;
+}
+```
+
+### Step 3 — Create DTOs
+
+```typescript
+// src/modules/product/dto/create-product.dto.ts
+import { IsString, IsNumber, Min } from 'class-validator';
+
+export class CreateProductDto {
+  @IsString()
+  name: string;
+
+  @IsNumber()
+  @Min(0)
+  price: number;
+}
+```
+
+```typescript
+// src/modules/product/dto/update-product.dto.ts
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateProductDto } from './create-product.dto';
+
+export class UpdateProductDto extends PartialType(CreateProductDto) {}
+```
+
+### Step 4 — Create the Service
+
+```typescript
+// src/modules/product/services/product.service.ts
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Logger } from '@nestjs/common';
+import { Product } from '../entities/product.entity';
+import { CreateProductDto } from '../dto/create-product.dto';
+import { UpdateProductDto } from '../dto/update-product.dto';
+
+@Injectable()
+export class ProductService {
+  private readonly logger = new Logger(ProductService.name);
+
+  constructor(
+    @InjectRepository(Product)
+    private readonly productRepository: Repository<Product>,
+  ) {}
+
+  async create(dto: CreateProductDto): Promise<Product> {
+    const product = this.productRepository.create(dto);
+    return this.productRepository.save(product);
+  }
+
+  async findAll(): Promise<Product[]> {
+    return this.productRepository.find({ where: { deletedAt: null } });
+  }
+
+  async findById(id: string): Promise<Product> {
+    const product = await this.productRepository.findOne({ where: { id } });
+    if (!product) throw new NotFoundException(`Product ${id} not found`);
+    return product;
+  }
+
+  async update(id: string, dto: UpdateProductDto): Promise<Product> {
+    const product = await this.findById(id);
+    return this.productRepository.save({ ...product, ...dto });
+  }
+
+  async remove(id: string): Promise<void> {
+    const product = await this.findById(id);
+    await this.productRepository.softRemove(product);
+  }
+}
+```
+
+### Step 5 — Create the Module
+
+```typescript
+// src/modules/product/product.module.ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Product } from './entities/product.entity';
+import { ProductService } from './services/product.service';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Product])],
+  providers: [ProductService],
+  exports: [ProductService],
+})
+export class ProductModule {}
+```
+
+### Step 6 — Create the Public API Barrel
+
+```typescript
+// src/modules/product/index.ts
+export { ProductModule } from './product.module';
+export { ProductService } from './services/product.service';
+export { Product } from './entities/product.entity';
+export { CreateProductDto } from './dto/create-product.dto';
+export { UpdateProductDto } from './dto/update-product.dto';
+```
+
+### Step 7 — Create the Controller
+
+```typescript
+// src/api/v1/product/product.controller.ts
+import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { ProductService, CreateProductDto, UpdateProductDto } from '@modules/product';
+import { CurrentUser, Roles } from '@modules/auth';
+import { AuthenticatedUser } from '@modules/auth';
+
+@Controller('api/v1/products')
+export class ProductController {
+  constructor(private readonly productService: ProductService) {}
+
+  @Get()
+  findAll() {
+    return this.productService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.productService.findById(id);
+  }
+
+  @Post()
+  @Roles('superadmin', 'editor')
+  create(@Body() dto: CreateProductDto) {
+    return this.productService.create(dto);
+  }
+
+  @Put(':id')
+  @Roles('superadmin', 'editor')
+  update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
+    return this.productService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @Roles('superadmin')
+  remove(@Param('id') id: string) {
+    return this.productService.remove(id);
+  }
+}
+```
+
+### Step 8 — Register in AppModule
+
+```typescript
+// src/app.module.ts
+import { ProductModule } from '@modules/product';
+
+@Module({
+  imports: [
+    // ... existing modules
+    ProductModule,
+  ],
+})
+export class AppModule {}
+```
+
+And register the controller in `app.module.ts` or create a separate API module for it.
+
+### Step 9 — Generate and Run the Migration
+
+```bash
+# Using the forge CLI (recommended — path is enforced automatically):
+npx ts-node -r tsconfig-paths/register cli/index.ts db migrate generate CreateProductsTable
+npx ts-node -r tsconfig-paths/register cli/index.ts db migrate run
+
+# Or via npm run aliases:
+npm run migration:generate src/infrastructure/database/migrations/CreateProductsTable
+npm run migration:run
+```
+
+### Step 10 — Verify
+
+```bash
+npm run start:dev
+# Test endpoints at http://localhost:3000/api/v1/products
+```
+
+---
+
+## Quick Reference Card
+
+```
+Adding a module?        Follow the 10-step checklist in Section 21.
+New endpoint?           Controller calls service. Zero logic in controller.
+Cross-module data?      Import and call the other module's exported service.
+DB change?              Edit entity → forge db migrate generate <Name> → forge db migrate run.
+Send email/SMS?         Queue it via NotificationService. Never send inline.
+File upload?            Store S3 key in DB. Use @ResolvePresignedUrls on GET.
+Need a transaction?     Annotate the service method with @Transactional().
+Public endpoint?        Add @Public() decorator.
+Role restriction?       Add @Roles(...) or @RequirePermissions(...).
+Seed / reset DB?        forge db seed | forge db reset.
+Something broken?       Check logs/ directory. All errors are structured there.
+```
+
+---
+
+*This document reflects the architecture of nest-forge v3.x. When in doubt, read the existing code — it is the source of truth.*

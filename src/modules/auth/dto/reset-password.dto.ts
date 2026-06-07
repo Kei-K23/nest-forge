@@ -1,5 +1,5 @@
 import { IsNotEmpty, IsString } from 'class-validator';
-import { IsPassword } from '../../../common/decorators/is-password.decorator';
+import { IsPassword } from '../../../common/validators/is-password.validator';
 
 export class ResetPasswordDto {
   @IsString({ message: 'Access Token must be a string' })
