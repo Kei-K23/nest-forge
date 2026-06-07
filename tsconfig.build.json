@@ -5,7 +5,7 @@
   },
   "exclude": [
     "node_modules",
-    "cli/easy-generate/templates",
+    "cli",
     "test",
     "dist",
     "**/*spec.ts"
