@@ -10,11 +10,10 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
 import { FileUploadService } from 'src/common/services/file-upload.service';
-import { nowUtc } from 'src/common/utils/date-time.util';
 import { Admin, AdminService } from 'src/modules/admin';
+import { AdminLoginDto } from '../dto/admin-login.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
-import { AdminLoginDto } from '../dto/admin-login.dto';
 import { JwtPayload } from '../interfaces/user.interface';
 import { TokenService } from './token.service';
 import { TwoFactorService } from './two-factor.service';
@@ -51,7 +50,7 @@ export class AdminAuthService {
     return admin;
   }
 
-  private async completeAdminLogin(admin: Admin, request: Request) {
+  private async completeAdminLogin(admin: Admin, _request: Request) {
     const payload: JwtPayload = {
       sub: admin.id,
       subjectType: 'ADMIN',
@@ -66,8 +65,6 @@ export class AdminAuthService {
       'admin',
     );
 
-    const previousLastLoginAt = admin.lastLoginAt;
-    const lastLoginAt = nowUtc();
     await this.adminService.updateFields(admin.id, { lastLoginAt });
 
     this.logger.log(`Admin with ID '${admin.id}' logged in successfully`);
@@ -103,7 +100,9 @@ export class AdminAuthService {
       };
     }
 
-    const fullAdmin = await this.adminService.findByIdWithRoleRelations(admin.id);
+    const fullAdmin = await this.adminService.findByIdWithRoleRelations(
+      admin.id,
+    );
 
     if (!fullAdmin) {
       throw new UnauthorizedException(`Admin with ID '${admin.id}' not found`);
@@ -143,7 +142,7 @@ export class AdminAuthService {
   async updateProfile(
     userId: string,
     updateProfileDto: UpdateProfileDto,
-    request: Request,
+    _request: Request,
     file?: Express.Multer.File,
   ) {
     const admin = await this.adminService.findByIdNullable(userId);
@@ -182,7 +181,10 @@ export class AdminAuthService {
 
     const savedAdmin = await this.adminService.saveEntity(updatedAdmin);
 
-    await this.fileUploadService.replace(newProfileImageUrl, admin.profileImageUrl || '');
+    await this.fileUploadService.replace(
+      newProfileImageUrl,
+      admin.profileImageUrl || '',
+    );
 
     this.logger.log(`Admin with ID '${admin.id}' profile updated successfully`);
     return savedAdmin;
@@ -191,7 +193,7 @@ export class AdminAuthService {
   async changePassword(
     userId: string,
     dto: ChangePasswordDto,
-    request: Request,
+    _request: Request,
   ): Promise<void> {
     const admin = await this.adminService.findByIdNullable(userId);
 
