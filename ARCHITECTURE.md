@@ -193,7 +193,7 @@ Understanding these four zones is **mandatory** before writing any code.
 ```typescript
 // ✅ CORRECT — thin controller
 @Post()
-@LogActivity({ action: LogAction.CREATE, module: 'ADMIN' })
+@LogActivity({ action: LogAction.CREATE, description: 'Admin created' })
 async create(@Body() dto: CreateAdminDto) {
   return this.adminService.create(dto);
 }
@@ -217,12 +217,15 @@ Each module contains:
 - `dto/` — Data Transfer Objects for input validation
 - `services/` — Business logic
 - `events/` — Domain events for cross-module communication
-- `index.ts` — Public API (what other modules can import)
+- `index.ts` — Module wiring and domain types (module class, entities, events)
+- `api.ts` — Services, DTOs, and route decorators (no re-exports of `index.ts` symbols)
 
 **Rules:**
 - A module **only accesses its own entities**
 - To use another module's data, call that module's **exported service**
-- Always expose a public API via `index.ts`
+- Always expose both `index.ts` and `api.ts` barrels — no symbol appears in both
+- Controllers always import from `api.ts` — services, DTOs, and route decorators live there
+- Domain services import services from `api.ts`; entities and events from `index.ts`
 
 ### Zone 3: `infrastructure/` — Technical Layer
 
@@ -252,27 +255,71 @@ modules/
     ├── services/
     │   └── product.service.ts
     ├── product.module.ts
-    └── index.ts                     ← Public API barrel
+    ├── index.ts                     ← Full domain public API (for other modules)
+    └── api.ts                       ← HTTP surface (for controllers only)
 ```
 
-### `index.ts` — The Public API Barrel
+### `index.ts` vs `api.ts` — Two Barrels, Two Audiences
+
+Every module exposes two barrel files with a **strict no-overlap rule**: if a symbol is in `api.ts` it must not appear in `index.ts`, and vice versa. Each symbol has exactly one canonical home.
+
+| | `index.ts` | `api.ts` |
+|---|---|---|
+| **Used by** | Other domain modules, `app.module.ts` | Controllers in `src/api/v1/` only |
+| **Exports** | Module class, entities, events, domain interfaces, guards used as providers | DTOs, services, decorators for routes |
+| **Never exports** | DTOs, route decorators, route guards | Module class, entities, events, internal interfaces |
+
+**`index.ts` — Module wiring and domain types**
 
 ```typescript
 // modules/product/index.ts
-export { ProductModule } from './product.module';
-export { ProductService } from './services/product.service';
-export { Product } from './entities/product.entity';
-export { CreateProductDto } from './dto/create-product.dto';
+export { ProductModule } from './product.module';       // ← module class, for app.module.ts
+export { Product } from './entities/product.entity';    // ← entity, for domain services that need the type
+export { ProductCreatedEvent } from './events/product-created.event'; // ← events
+// No ProductService — services live in api.ts
+// No DTOs — DTOs live in api.ts
 ```
 
-Other modules import from `index.ts` only:
+**`api.ts` — Services, DTOs, and route decorators**
+
 ```typescript
-// ✅ CORRECT
-import { ProductService } from '@modules/product';
+// modules/product/api.ts
+export { ProductService } from './services/product.service'; // ← service, for both controllers and domain services
+export { CreateProductDto } from './dto/create-product.dto';
+export { UpdateProductDto } from './dto/update-product.dto';
+export { FilterProductDto } from './dto/filter-product.dto';
+// No ProductModule — controllers don't register modules
+// No Product entity — controllers never handle raw entities
+// No events — domain services import those from index.ts
+```
+
+**Import rules:**
+
+```typescript
+// ✅ Controller importing — always use api.ts
+// src/api/v1/product/product.controller.ts
+import { ProductService, CreateProductDto } from 'src/modules/product/api';
+
+// ✅ Domain service calling another module's service — use api.ts (services live there)
+// src/modules/order/services/order.service.ts
+import { ProductService } from 'src/modules/product/api';
+
+// ✅ Domain service needing an entity type or event — use index.ts
+// src/modules/order/services/order.service.ts
+import { Product } from 'src/modules/product';
+import { ProductCreatedEvent } from 'src/modules/product';
 
 // ❌ WRONG — deep import bypasses module boundary
-import { ProductService } from '@modules/product/services/product.service';
+import { ProductService } from 'src/modules/product/services/product.service';
+
+// ❌ WRONG — controller importing from index.ts (no services or DTOs there)
+import { Product, ProductModule } from 'src/modules/product';
+
+// ❌ WRONG — importing a service from index.ts (it no longer lives there)
+import { ProductService } from 'src/modules/product';
 ```
+
+The no-overlap rule means every symbol has exactly one canonical import path. There is no need to guess which barrel to check.
 
 ---
 
@@ -660,48 +707,109 @@ async create(dto: CreateAdminDto): Promise<Admin> {
 
 ### Two Types of Logs
 
-#### Activity Log — User Actions (High Volume)
+| Type | Table | Purpose | Who writes it |
+|------|-------|---------|---------------|
+| **ActivityLog** | `activity_logs` | End-user actions (login, register, profile changes) | Interceptor or `ActivityLogEvent` |
+| **AuditLog** | `audit_logs` | Admin-driven changes with `oldValue`/`newValue` diff | Interceptor or `AuditLogEvent` |
 
-Records what end-users do: login, logout, registration, profile updates.
+### Two Write Paths
+
+There are two distinct ways to write a log entry. Choose based on when the user identity is known.
+
+#### Path 1 — `@LogActivity` Interceptor (authenticated endpoints)
+
+Use this for any endpoint protected by `JwtAuthGuard` where `request.user` is populated before the handler runs.
 
 ```typescript
-// On a controller method:
-import { LogActivity } from '@modules/log';
-import { LogAction } from '@modules/log';
+import { LogAction, LogActivity } from 'src/modules/log/api';
 
-@Post('login')
-@Public()
+@Patch('me')
 @LogActivity({
-  action: LogAction.LOGIN,
-  module: 'USER_AUTH',
-  description: 'User login',
+  action: LogAction.UPDATE_PROFILE,
+  description: 'Profile updated',
+  resourceType: 'Auth',                              // optional
+  getResourceId: (_, req) =>                         // optional
+    (req as unknown as { user?: { id?: string } }).user?.id,
 })
-async login(@Body() dto: LoginDto) {
-  return this.userAuthService.login(dto);
+async updateProfile(@CurrentUser() user: AuthenticatedUser, ...) {
+  return this.userAuthService.updateProfile(...);
 }
 ```
 
-#### Audit Log — Admin Changes (Compliance)
+The interceptor automatically logs `LogStatus.SUCCESS` on completion and `LogStatus.FAILURE` if the handler throws, then re-throws the error so exception filters still run normally.
 
-Records before/after state of admin-driven data changes.
+#### Path 2 — Service Events (`@Public()` endpoints and failure cases)
+
+`@Public()` endpoints run before authentication, so `request.user` is null and the interceptor skips logging. Domain services must emit events directly via `EventEmitter2`.
 
 ```typescript
-import { attachAuditLogMetadata } from '@modules/log';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { buildRequestContext } from 'src/common/utils/request-context.util';
+import {
+  ACTIVITY_LOG_EVENT, ActivityLogEvent,
+  LogAction, LogStatus,
+} from 'src/modules/log';
 
-async update(id: string, dto: UpdateAdminDto): Promise<Admin> {
+@Injectable()
+export class UserAuthService {
+  constructor(private eventEmitter: EventEmitter2) {}
+
+  async userLogin(dto: UserLoginDto, request: Request) {
+    const user = await this.validateUser(dto).catch((error) => {
+      // Log failure before re-throwing
+      this.eventEmitter.emit(ACTIVITY_LOG_EVENT, new ActivityLogEvent({
+        userId: 'unknown',
+        action: LogAction.LOGIN,
+        description: 'User login failed',
+        resourceType: 'Auth',
+        status: LogStatus.FAILURE,
+        ...buildRequestContext(request),
+      }));
+      throw error;
+    });
+
+    // Log success
+    this.eventEmitter.emit(ACTIVITY_LOG_EVENT, new ActivityLogEvent({
+      userId: user.id,
+      action: LogAction.LOGIN,
+      description: 'User logged in',
+      resourceType: 'Auth',
+      resourceId: user.id,
+      status: LogStatus.SUCCESS,
+      ...buildRequestContext(request),
+    }));
+  }
+}
+```
+
+Use `AuditLogEvent` / `AUDIT_LOG_EVENT` for admin service events — same pattern.
+
+### Audit Log Before/After Diffs
+
+To capture what changed, use `diffAuditValues` + `attachAuditLogMetadata` in the service. The interceptor reads the metadata off the return value and writes the diff to the audit log.
+
+```typescript
+import {
+  attachAuditLogMetadata,
+  diffAuditValues,
+} from 'src/modules/log/utils/audit-log-metadata.util';
+
+async updateAdmin(id: string, dto: UpdateAdminDto): Promise<Admin> {
   const before = await this.findById(id);
   const updated = await this.adminRepository.save({ ...before, ...dto });
 
-  attachAuditLogMetadata(updated, {
-    action: LogAction.UPDATE,
-    module: 'ADMIN',
-    before,
-    after: updated,
-  });
-
-  return updated;
+  const diff = diffAuditValues(before, updated, ['fullName', 'email', 'isActive']);
+  return attachAuditLogMetadata(updated, diff);
+  // Interceptor consumes the non-enumerable __auditLogMetadata property.
+  // It never appears in the API response.
 }
 ```
+
+`diffAuditValues` automatically strips any field named `password` — no manual redaction needed.
+
+### Log Retention
+
+Both `ActivityLogService` and `AuditLogService` run a scheduled purge at 2 AM daily (configurable via `LOG_RETENTION_DAYS` in `src/common/utils/date-time.util.ts`). No manual setup required — the cron is registered via `@Cron('0 2 * * *')` on `purgeOldLogs()`.
 
 ### Winston Logging in Services
 
@@ -936,7 +1044,7 @@ export class OrderService {
 
 | Decorator | Import From | Effect |
 |-----------|-------------|--------|
-| `@LogActivity({...})` | `@modules/log` | Records user action to activity log |
+| `@LogActivity({ action, description, resourceType?, getResourceId? })` | `src/modules/log/api` | Records user action to activity log on success **and** failure. Only works on authenticated (non-`@Public()`) endpoints — use service events for public endpoints. |
 
 ### Common Decorators
 
@@ -1100,7 +1208,7 @@ npm run db:reset
 
 1. **Never put business logic in a controller.** Controllers call services and return.
 2. **Never access another module's repository directly.** Use that module's exported service.
-3. **Always import from the module's `index.ts`.** No deep imports into module internals.
+3. **Use the right barrel — no deep imports.** Controllers import from `api.ts`. Domain services import services from `api.ts` and entities/events from `index.ts`. No symbol appears in both barrels.
 4. **Always extend `BaseEntity`.** No entity without UUID, timestamps, and soft delete.
 5. **Never use `synchronize: true`** in TypeORM config. Always write migrations.
 6. **Never store presigned URLs in the database.** Store the S3 key only.
@@ -1152,7 +1260,12 @@ try {
 
 | Mistake | Correct Approach |
 |---------|-----------------|
-| Importing deep into a module (`@modules/auth/services/token.service`) | Import from barrel: `@modules/auth` |
+| Using `@LogActivity` on a `@Public()` endpoint | `@Public()` endpoints have no `request.user` — emit `ActivityLogEvent`/`AuditLogEvent` from the service instead |
+| Controller importing from `index.ts` | `index.ts` has no services or DTOs — controllers must use `api.ts` |
+| Domain service importing an entity or event from `api.ts` | Entities and events live in `index.ts` — `api.ts` has no entities |
+| Domain service importing a service from `index.ts` | Services live in `api.ts` — use `import { FooService } from 'src/modules/foo/api'` |
+| Re-exporting the same symbol in both barrels | Each symbol has exactly one home: services/DTOs/decorators → `api.ts`; module class/entities/events → `index.ts` |
+| Importing deep into a module (`src/modules/auth/services/token.service`) | Import from the correct barrel: `api.ts` for services/DTOs, `index.ts` for entities/events |
 | Injecting `UserRepository` in `AuthService` | Call `UserService.findByPhone()` instead |
 | Calling `synchronize: true` in TypeORM config | Generate and run migrations |
 | Storing presigned S3 URLs in the database | Store the S3 key; resolve URLs at response time |
@@ -1175,6 +1288,7 @@ Follow this checklist when creating a new domain module (example: `product`).
 mkdir -p src/modules/product/{dto,entities,services}
 touch src/modules/product/product.module.ts
 touch src/modules/product/index.ts
+touch src/modules/product/api.ts
 ```
 
 ### Step 2 — Create the Entity
@@ -1283,15 +1397,28 @@ import { ProductService } from './services/product.service';
 export class ProductModule {}
 ```
 
-### Step 6 — Create the Public API Barrel
+### Step 6 — Create the Two Barrel Files
+
+**`index.ts`** — module wiring and domain types only (no services, no DTOs):
 
 ```typescript
 // src/modules/product/index.ts
-export { ProductModule } from './product.module';
+export { ProductModule } from './product.module';       // for app.module.ts imports
+export { Product } from './entities/product.entity';    // entity type for other domain services
+// No ProductService — services live in api.ts
+// No DTOs — DTOs live in api.ts
+```
+
+**`api.ts`** — services, DTOs, and route decorators only (no module class, no entities):
+
+```typescript
+// src/modules/product/api.ts
 export { ProductService } from './services/product.service';
-export { Product } from './entities/product.entity';
 export { CreateProductDto } from './dto/create-product.dto';
 export { UpdateProductDto } from './dto/update-product.dto';
+export { FilterProductDto } from './dto/filter-product.dto';
+// No ProductModule — controllers don't register modules
+// No Product entity — raw entities never cross the HTTP boundary
 ```
 
 ### Step 7 — Create the Controller
@@ -1299,9 +1426,9 @@ export { UpdateProductDto } from './dto/update-product.dto';
 ```typescript
 // src/api/v1/product/product.controller.ts
 import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
-import { ProductService, CreateProductDto, UpdateProductDto } from '@modules/product';
-import { CurrentUser, Roles } from '@modules/auth';
-import { AuthenticatedUser } from '@modules/auth';
+import { ProductService, CreateProductDto, UpdateProductDto } from 'src/modules/product/api';
+import { CurrentUser, Roles } from 'src/modules/auth/api';
+import type { AuthenticatedUser } from 'src/modules/auth/api';
 
 @Controller('api/v1/products')
 export class ProductController {
@@ -1380,7 +1507,9 @@ npm run start:dev
 ```
 Adding a module?        Follow the 10-step checklist in Section 21.
 New endpoint?           Controller calls service. Zero logic in controller.
-Cross-module data?      Import and call the other module's exported service.
+Writing a controller?   Import services/DTOs/decorators from api.ts only.
+Need another service?   Import it from api.ts — services live there, not index.ts.
+Need an entity/event?   Import from index.ts — entities and events live there.
 DB change?              Edit entity → forge db migrate generate <Name> → forge db migrate run.
 Send email/SMS?         Queue it via NotificationService. Never send inline.
 File upload?            Store S3 key in DB. Use @ResolvePresignedUrls on GET.

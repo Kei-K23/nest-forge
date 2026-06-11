@@ -10,8 +10,8 @@ import {
   REFRESH_TOKEN_TTL_DAYS,
 } from 'src/common/utils/date-time.util';
 import { sha256Hex } from 'src/common/utils/hash.util';
-import { AdminService } from 'src/modules/admin';
-import { UserService } from 'src/modules/user';
+import { AdminService } from 'src/modules/admin/api';
+import { UserService } from 'src/modules/user/api';
 import { Repository } from 'typeorm';
 import { RefreshToken } from '../entities/refresh-token.entity';
 import { JwtPayload } from '../interfaces/user.interface';

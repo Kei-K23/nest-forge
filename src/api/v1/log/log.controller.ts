@@ -1,8 +1,11 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
-import { FilterActivityLogDto } from 'src/modules/log/dto/filter-activity-log.dto';
-import { FilterAuditLogDto } from 'src/modules/log/dto/filter-audit-log.dto';
-import { ActivityLogService, AuditLogService } from 'src/modules/log/api';
+import {
+  ActivityLogService,
+  AuditLogService,
+  FilterActivityLogDto,
+  FilterAuditLogDto,
+} from 'src/modules/log/api';
 import {
   PermissionModule,
   PermissionsGuard,

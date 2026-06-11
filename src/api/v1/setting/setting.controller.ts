@@ -13,8 +13,7 @@ import {
   PermissionsGuard,
   RequirePermissions,
 } from 'src/modules/role/api';
-import { CreateSMTPDto } from 'src/modules/setting/dto/create-smtp-setting.dto';
-import { SettingService } from 'src/modules/setting/services/setting.service';
+import { CreateSMTPDto, SettingService } from 'src/modules/setting/api';
 
 @Controller({ path: 'settings', version: '1' })
 export class SettingController {

@@ -5,11 +5,12 @@ import {
   CallHandler,
   Logger,
 } from '@nestjs/common';
-import { Observable } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { Observable, throwError } from 'rxjs';
+import { catchError, tap } from 'rxjs/operators';
 import { ActivityLogService } from '../services/activity-log.service';
 import { AuditLogService } from '../services/audit-log.service';
 import { LogAction } from '../constants/log-action.enum';
+import { LogStatus } from '../constants/log-status.enum';
 import { Reflector } from '@nestjs/core';
 import type { RequestWithUser } from 'src/modules/auth/api';
 import { Request } from 'express';
@@ -60,6 +61,15 @@ export class ActivityLogInterceptor implements NestInterceptor {
           logOptions,
         ).catch((error) => this.logger.error('Failed to log activity:', error));
       }),
+      catchError((error: unknown) => {
+        this.logActivity(
+          null,
+          request as unknown as Request,
+          logOptions,
+          LogStatus.FAILURE,
+        ).catch((e) => this.logger.error('Failed to log activity failure:', e));
+        return throwError(() => error);
+      }),
     );
   }
 
@@ -67,6 +77,7 @@ export class ActivityLogInterceptor implements NestInterceptor {
     result: unknown,
     request: Request,
     logOptions: ActivityLogOptions,
+    status: LogStatus = LogStatus.SUCCESS,
   ): Promise<void> {
     try {
       const requestWithUser = request as unknown as RequestWithUser;
@@ -94,6 +105,7 @@ export class ActivityLogInterceptor implements NestInterceptor {
         browser,
         os,
         location: (request.headers['cf-ipcountry'] as string) || undefined,
+        status,
         metadata: {
           method: request.method,
           url: request.url,
@@ -119,6 +131,7 @@ export class ActivityLogInterceptor implements NestInterceptor {
           browser: context.browser,
           os: context.os,
           location: context.location,
+          status: context.status,
           metadata: context.metadata,
         });
       } else {

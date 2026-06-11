@@ -14,7 +14,7 @@ import {
   attachAuditLogMetadata,
   diffAuditValues,
 } from 'src/modules/log/utils/audit-log-metadata.util';
-import { RoleService } from 'src/modules/role';
+import { RoleService } from 'src/modules/role/api';
 import { DeepPartial, Repository } from 'typeorm';
 import { CreateAdminDto } from '../dto/create-admin.dto';
 import { FilterAdminDto } from '../dto/filter-admin.dto';

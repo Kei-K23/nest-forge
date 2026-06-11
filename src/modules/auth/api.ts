@@ -24,7 +24,3 @@ export { PasswordResetService } from './services/password-reset.service';
 export { TokenService } from './services/token.service';
 export { TwoFactorService } from './services/two-factor.service';
 export { UserAuthService } from './services/user-auth.service';
-export {
-  TWO_FACTOR_CODE_REQUESTED,
-  TwoFactorCodeRequestedEvent,
-} from './events/two-factor-code-requested.event';

@@ -159,7 +159,7 @@ export class AuthController {
   @Post('logout')
   @LogActivity({
     action: LogAction.LOGOUT,
-    description: 'User logged out',
+    description: 'Logged out',
     resourceType: 'Auth',
     getResourceId: (_, req) =>
       (req as unknown as { user?: { id?: string } }).user?.id,
@@ -179,6 +179,13 @@ export class AuthController {
   }
 
   @Patch('me')
+  @LogActivity({
+    action: LogAction.UPDATE_PROFILE,
+    description: 'Profile updated',
+    resourceType: 'Auth',
+    getResourceId: (_, req) =>
+      (req as unknown as { user?: { id?: string } }).user?.id,
+  })
   @UseInterceptors(
     FileInterceptor('profileImage', profileImageInterceptorOptions),
   )
@@ -197,6 +204,13 @@ export class AuthController {
   }
 
   @Put('me/password')
+  @LogActivity({
+    action: LogAction.CHANGE_PASSWORD,
+    description: 'Password changed',
+    resourceType: 'Auth',
+    getResourceId: (_, req) =>
+      (req as unknown as { user?: { id?: string } }).user?.id,
+  })
   @HttpCode(200)
   async changePassword(
     @CurrentUser() user: AuthenticatedUser,
@@ -211,6 +225,13 @@ export class AuthController {
   }
 
   @Delete('me')
+  @LogActivity({
+    action: LogAction.DELETE_ACCOUNT,
+    description: 'Account deleted',
+    resourceType: 'Auth',
+    getResourceId: (_, req) =>
+      (req as unknown as { user?: { id?: string } }).user?.id,
+  })
   @HttpCode(200)
   async deleteProfile(
     @CurrentUser() user: AuthenticatedUser,
@@ -240,6 +261,13 @@ export class AuthController {
   }
 
   @Post('2fa/enable')
+  @LogActivity({
+    action: LogAction.ENABLE_TWO_FACTOR,
+    description: 'Two-factor authentication enable requested',
+    resourceType: 'Auth',
+    getResourceId: (_, req) =>
+      (req as unknown as { user?: { id?: string } }).user?.id,
+  })
   @HttpCode(200)
   async enableTwoFactor(
     @CurrentUser() user: AuthenticatedUser,
@@ -251,11 +279,21 @@ export class AuthController {
   @Public()
   @Post('2fa/enable/confirm')
   @HttpCode(200)
-  async enableTwoFactorVerify(@Body() dto: VerifyTwoFactorDto) {
-    return this.twoFactorService.verifyTwoFactor(dto.userId, dto.code);
+  async enableTwoFactorVerify(
+    @Body() dto: VerifyTwoFactorDto,
+    @Req() request: Request,
+  ) {
+    return this.twoFactorService.verifyTwoFactor(dto.userId, dto.code, request);
   }
 
   @Post('2fa/disable')
+  @LogActivity({
+    action: LogAction.DISABLE_TWO_FACTOR,
+    description: 'Two-factor authentication disabled',
+    resourceType: 'Auth',
+    getResourceId: (_, req) =>
+      (req as unknown as { user?: { id?: string } }).user?.id,
+  })
   @HttpCode(200)
   async disableTwoFactor(
     @CurrentUser() user: AuthenticatedUser,

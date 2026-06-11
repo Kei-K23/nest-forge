@@ -8,19 +8,27 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as appleSignin from 'apple-signin-auth';
 import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import { FileUploadService } from 'src/common/services/file-upload.service';
 import { nowUtc } from 'src/common/utils/date-time.util';
+import { buildRequestContext } from 'src/common/utils/request-context.util';
+import {
+  ACTIVITY_LOG_EVENT,
+  ActivityLogEvent,
+  LogStatus,
+} from 'src/modules/log';
+import { LogAction } from 'src/modules/log/api';
 import { SMSPhoServiceUtils } from 'src/common/utils/sms-pho-service.utils';
 import {
   LoginProvider,
   User,
   UserRegistrationStage,
-  UserService,
 } from 'src/modules/user';
+import { UserService } from 'src/modules/user/api';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
 import { UserAppleLoginDto } from '../dto/user-apple-login.dto';
@@ -44,6 +52,7 @@ export class UserAuthService {
     private fileUploadService: FileUploadService,
     private configService: ConfigService,
     private jwtService: JwtService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   async validateUserById(id: string): Promise<User | null> {
@@ -65,6 +74,19 @@ export class UserAuthService {
     );
 
     this.logger.log(`User with ID '${user.id}' logged in successfully`);
+
+    this.eventEmitter.emit(
+      ACTIVITY_LOG_EVENT,
+      new ActivityLogEvent({
+        userId: user.id,
+        action: LogAction.LOGIN,
+        description: 'User logged in',
+        resourceType: 'Auth',
+        resourceId: user.id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      }),
+    );
 
     return {
       accessToken,
@@ -88,6 +110,17 @@ export class UserAuthService {
       this.logger.warn(
         `Invalid login attempt for phone '${loginDto.phone}' (user not found or no password)`,
       );
+      this.eventEmitter.emit(
+        ACTIVITY_LOG_EVENT,
+        new ActivityLogEvent({
+          userId: 'unknown',
+          action: LogAction.LOGIN,
+          description: 'User login failed',
+          resourceType: 'Auth',
+          status: LogStatus.FAILURE,
+          ...buildRequestContext(request),
+        }),
+      );
       throw new UnauthorizedException('Invalid phone or password');
     }
 
@@ -100,11 +133,35 @@ export class UserAuthService {
       this.logger.warn(
         `Invalid login attempt for phone '${loginDto.phone}' (incorrect password)`,
       );
+      this.eventEmitter.emit(
+        ACTIVITY_LOG_EVENT,
+        new ActivityLogEvent({
+          userId: user.id,
+          action: LogAction.LOGIN,
+          description: 'User login failed',
+          resourceType: 'Auth',
+          resourceId: user.id,
+          status: LogStatus.FAILURE,
+          ...buildRequestContext(request),
+        }),
+      );
       throw new UnauthorizedException('Invalid phone or password');
     }
 
     if (user.isBanned) {
       this.logger.warn(`Banned user with ID '${user.id}' attempted to login`);
+      this.eventEmitter.emit(
+        ACTIVITY_LOG_EVENT,
+        new ActivityLogEvent({
+          userId: user.id,
+          action: LogAction.LOGIN,
+          description: 'User login failed — account banned',
+          resourceType: 'Auth',
+          resourceId: user.id,
+          status: LogStatus.FAILURE,
+          ...buildRequestContext(request),
+        }),
+      );
       throw new UnauthorizedException('Your account has been banned');
     }
 
@@ -368,6 +425,19 @@ export class UserAuthService {
     await this.userService.saveEntity(user);
 
     await this.fileUploadService.replace(newProfileImageUrl, existingProfileImageUrl);
+
+    this.eventEmitter.emit(
+      ACTIVITY_LOG_EVENT,
+      new ActivityLogEvent({
+        userId: user.id,
+        action: LogAction.REGISTER,
+        description: 'User registration completed',
+        resourceType: 'Auth',
+        resourceId: user.id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      }),
+    );
 
     const loginData = await this.completeUserLogin(user, request);
 

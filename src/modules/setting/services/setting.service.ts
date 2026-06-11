@@ -2,6 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { plainToClass } from 'class-transformer';
+import {
+  attachAuditLogMetadata,
+  diffAuditValues,
+} from 'src/modules/log/utils/audit-log-metadata.util';
 import { Setting } from '../entities/setting.entity';
 import { CreateSMTPDto } from '../dto/create-smtp-setting.dto';
 import { SMTPResponseDto } from '../dto/smtp-response.dto';
@@ -14,6 +18,16 @@ export class SettingService {
   ) {}
 
   async createSMTPSettings(createSMTPDto: CreateSMTPDto) {
+    let oldSettings: Record<string, unknown> = {};
+    try {
+      oldSettings = { ...(await this.getSMTPSettings()) } as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      // No existing settings — first-time creation, oldValue stays empty
+    }
+
     const smtpSettings = [
       { key: 'smtp_host', value: createSMTPDto.smtpHost },
       { key: 'smtp_port', value: createSMTPDto.smtpPort },
@@ -39,7 +53,22 @@ export class SettingService {
       }
     }
 
-    return this.getSMTPSettings();
+    const result = await this.getSMTPSettings();
+    const newSettings = { ...result } as Record<string, unknown>;
+
+    const trackedFields = [
+      'smtpHost',
+      'smtpPort',
+      'smtpSecure',
+      'smtpUsername',
+      'smtpPassword',
+      'smtpFromEmail',
+      'smtpFromName',
+      'smtpEnabled',
+    ];
+
+    const diff = diffAuditValues(oldSettings, newSettings, trackedFields);
+    return attachAuditLogMetadata(result, diff);
   }
 
   async getSMTPSettings(): Promise<SMTPResponseDto> {

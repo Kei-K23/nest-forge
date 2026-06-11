@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
@@ -25,6 +26,8 @@ const VALID_SORT_FIELDS: (keyof ActivityLog)[] = [
 
 @Injectable()
 export class ActivityLogService {
+  private readonly logger = new Logger(ActivityLogService.name);
+
   constructor(
     @InjectRepository(ActivityLog)
     private readonly activityLogRepository: Repository<ActivityLog>,
@@ -90,6 +93,12 @@ export class ActivityLogService {
     const [items, total] =
       await this.activityLogRepository.findAndCount(options);
     return { items, total };
+  }
+
+  @Cron('0 2 * * *')
+  async purgeOldLogs(): Promise<void> {
+    await this.deleteOldLogs();
+    this.logger.log(`Activity logs older than ${LOG_RETENTION_DAYS} days purged`);
   }
 
   async deleteOldLogs(daysToKeep: number = LOG_RETENTION_DAYS): Promise<void> {

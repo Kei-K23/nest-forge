@@ -5,7 +5,8 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Admin, AdminService } from 'src/modules/admin';
+import { Admin } from 'src/modules/admin';
+import { AdminService } from 'src/modules/admin/api';
 import { CHECK_OWNERSHIP_KEY } from '../decorators/check-ownership.decorator';
 import { AuthenticatedUser } from '../interfaces/user.interface';
 

@@ -53,6 +53,11 @@ An `OtpRecord` is a short-lived verification record used to validate a one-time 
 
 The distinction: `ActivityLog` is "what did the user do?"; `AuditLog` is "what did the admin change and what was the before/after?"
 
+**Two write paths — both emit to the same log tables:**
+
+- **Interceptor path** — `ActivityLogInterceptor` fires on any handler decorated with `@LogActivity()`. Used for authenticated endpoints where `request.user` is already populated. The interceptor routes to `ActivityLog` or `AuditLog` based on `subjectType`.
+- **Service event path** — Domain services emit `ActivityLogEvent` or `AuditLogEvent` via `EventEmitter2`. Used for pre-auth endpoints (`@Public()`) where `request.user` is null at interceptor time (login, registration, 2FA confirm, password reset). Also used for failure-case logging, which the interceptor cannot capture.
+
 ---
 
 ## Role and Permission

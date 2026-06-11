@@ -7,10 +7,19 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as bcrypt from 'bcryptjs';
 import { Request } from 'express';
 import { FileUploadService } from 'src/common/services/file-upload.service';
-import { Admin, AdminService } from 'src/modules/admin';
+import { buildRequestContext } from 'src/common/utils/request-context.util';
+import { Admin } from 'src/modules/admin';
+import { AdminService } from 'src/modules/admin/api';
+import {
+  AUDIT_LOG_EVENT,
+  AuditLogEvent,
+  LogStatus,
+} from 'src/modules/log';
+import { LogAction } from 'src/modules/log/api';
 import { AdminLoginDto } from '../dto/admin-login.dto';
 import { ChangePasswordDto } from '../dto/change-password.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
@@ -29,6 +38,7 @@ export class AdminAuthService {
     private fileUploadService: FileUploadService,
     private configService: ConfigService,
     private jwtService: JwtService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   async validateAdminById(id: string): Promise<Admin | null> {
@@ -50,7 +60,7 @@ export class AdminAuthService {
     return admin;
   }
 
-  private async completeAdminLogin(admin: Admin, _request: Request) {
+  private async completeAdminLogin(admin: Admin, request: Request) {
     const payload: JwtPayload = {
       sub: admin.id,
       subjectType: 'ADMIN',
@@ -71,6 +81,19 @@ export class AdminAuthService {
 
     this.logger.log(`Admin with ID '${admin.id}' logged in successfully`);
 
+    this.eventEmitter.emit(
+      AUDIT_LOG_EVENT,
+      new AuditLogEvent({
+        adminId: admin.id,
+        action: LogAction.LOGIN,
+        description: 'Admin logged in',
+        entityName: 'Admin',
+        entityId: admin.id,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      }),
+    );
+
     return {
       accessToken,
       refreshToken,
@@ -87,7 +110,23 @@ export class AdminAuthService {
   }
 
   async adminLogin(loginDto: AdminLoginDto, request: Request) {
-    const admin = await this.validateAdmin(loginDto.email, loginDto.password);
+    let admin: Admin;
+    try {
+      admin = await this.validateAdmin(loginDto.email, loginDto.password);
+    } catch (error) {
+      this.eventEmitter.emit(
+        AUDIT_LOG_EVENT,
+        new AuditLogEvent({
+          adminId: null,
+          action: LogAction.LOGIN,
+          description: 'Admin login failed',
+          entityName: 'Admin',
+          status: LogStatus.FAILURE,
+          ...buildRequestContext(request),
+        }),
+      );
+      throw error;
+    }
 
     const is2FAEnabled = await this.twoFactorService.isTwoFactorEnabled(
       admin.id,

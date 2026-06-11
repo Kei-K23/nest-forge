@@ -13,6 +13,8 @@ import {
   getMockOtpCode,
   isOtpMockEnabled,
 } from 'src/common/utils/otp-mock.util';
+import { Request } from 'express';
+import { buildRequestContext } from 'src/common/utils/request-context.util';
 import { Admin } from 'src/modules/admin';
 import { OtpPurpose, OtpService, OtpStatus } from 'src/modules/otp';
 import { Repository } from 'typeorm';
@@ -20,6 +22,12 @@ import {
   TWO_FACTOR_CODE_REQUESTED,
   TwoFactorCodeRequestedEvent,
 } from '../events/two-factor-code-requested.event';
+import {
+  AUDIT_LOG_EVENT,
+  AuditLogEvent,
+  LogStatus,
+} from 'src/modules/log';
+import { LogAction } from 'src/modules/log/api';
 
 @Injectable()
 export class TwoFactorService {
@@ -64,7 +72,11 @@ export class TwoFactorService {
     this.logger.log(`2FA verification code queued for user ${userId}`);
   }
 
-  async verifyTwoFactor(userId: string, code: string): Promise<boolean> {
+  async verifyTwoFactor(
+    userId: string,
+    code: string,
+    request: Request,
+  ): Promise<boolean> {
     const record = await this.otpService.findPending({
       adminId: userId,
       purpose: OtpPurpose.TWO_FACTOR,
@@ -80,6 +92,20 @@ export class TwoFactorService {
     await this.adminRepository.update(userId, { isTwoFactorEnabled: true });
 
     this.logger.log(`2FA enabled for user ${userId}`);
+
+    this.eventEmitter.emit(
+      AUDIT_LOG_EVENT,
+      new AuditLogEvent({
+        adminId: userId,
+        action: LogAction.ENABLE_TWO_FACTOR,
+        description: 'Two-factor authentication enabled',
+        entityName: 'Admin',
+        entityId: userId,
+        status: LogStatus.SUCCESS,
+        ...buildRequestContext(request),
+      }),
+    );
+
     return true;
   }
 

@@ -15,7 +15,7 @@ export function attachAuditLogMetadata<T extends object>(
 ): T {
   Object.defineProperty(result, AUDIT_LOG_METADATA, {
     value: metadata,
-    enumerable: true,
+    enumerable: false,
     configurable: true,
   });
 
