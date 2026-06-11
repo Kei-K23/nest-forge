@@ -1,8 +1,10 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { RequirePermissions } from 'src/modules/auth/decorators/permissions.decorator';
-import { PermissionModule } from 'src/modules/auth/entities/permission.entity';
-import { PermissionsGuard } from 'src/modules/auth/guards/permissions.guard';
-import { RoleService } from 'src/modules/role';
+import {
+  PermissionModule,
+  PermissionsGuard,
+  RequirePermissions,
+  RoleService,
+} from 'src/modules/role/api';
 
 @Controller({ path: 'permissions', version: '1' })
 @UseGuards(PermissionsGuard)

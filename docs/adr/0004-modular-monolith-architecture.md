@@ -11,7 +11,7 @@ The project grew organically with NestJS modules providing loose boundaries, but
 - All domain modules nested under `src/v1/`, conflating API versioning with module boundaries.
 - Infrastructure modules (`notification/`, `health/`) placed inconsistently at `src/` root.
 - No explicit public API contracts per module — consumers import from deep internal paths.
-- Cross-module repository access: `AdminModule` registers `Role` (owned by `AuthModule`); `AuthModule` injects `User` and `Admin` repositories directly.
+- Cross-module repository access: `AdminModule` registers `Role` outside the role context; `AuthModule` injects `User` and `Admin` repositories directly.
 - `OtpModule` re-exports `TypeOrmModule` so consumers can access `OtpRecord` repository directly.
 - OTP lifecycle logic (create, verify, expire, mark-used) duplicated in `TwoFactorService` and `PasswordResetService` instead of owned by `OtpService`.
 - `ActivityLogModule` imported directly by `AuthModule` and `SettingModule` as a hard dependency, creating tight coupling across domain modules.
@@ -34,6 +34,7 @@ src/
 ├── api/
 │   └── v1/               ← HTTP layer only (controllers + DTOs, no business logic)
 │       ├── auth/
+│       ├── role/
 │       ├── user/
 │       ├── admin/
 │       ├── log/
@@ -54,10 +55,24 @@ Each domain module exposes an `index.ts` barrel file as its contract. Cross-modu
 A module only registers and injects its own entities. Cross-module data access goes through the owning module's exported service. Specifically:
 
 - `AuthModule` removes `User` and `Admin` from `TypeOrmModule.forFeature()` and calls `UserService`/`AdminService` instead.
-- `AdminModule` removes `Role` from `TypeOrmModule.forFeature()` and calls `RoleService` from `AuthModule`.
+- `AdminModule` removes `Role` from `TypeOrmModule.forFeature()` and calls `RoleService` from `RoleModule`.
 - `OtpModule` removes the `TypeOrmModule` re-export; `OtpRecord` is never accessed outside `OtpModule`.
 
 Exception: seeders (bootstrap utilities) may use direct repository access.
+
+Seeders still follow ownership-aligned naming and placement even when they use direct repositories. Role and permission bootstrap data belongs in a role seeder, super-admin bootstrap data belongs in an admin seeder, and demo/end-user bootstrap data belongs in a user seeder. The top-level seeding command orchestrates those seeders in dependency order.
+
+### 3a. Authentication and authorization ownership
+
+`AuthModule` owns authentication primitives: JWT strategy, JWT guard, public route decorator, current user decorator, and authenticated user payload types.
+
+`RoleModule` owns role-based authorization primitives: role and permission decorators, role and permission guards, permission modules, permission actions, and the role/permission data model.
+
+Role assignment deletion checks are orchestrated at the application boundary. For example, an admin-facing role deletion flow checks whether admins are assigned to the role before calling the role context to delete the role. This keeps `RoleService` focused on role data and avoids a circular dependency between the role and admin modules.
+
+`AuthModule` does not import or re-export `RoleModule`, `RoleService`, role guards, or permission guards. Authentication services may consume admin data that includes role details through `AdminService`, but role behavior remains owned by `RoleModule`.
+
+`AuthModule` does not keep compatibility exports for role-owned concepts after the move. Consumers must import role entities, DTOs, services, decorators, guards, and permission vocabulary from `RoleModule`'s public API or role-owned paths.
 
 ### 4. OTP lifecycle owned exclusively by OtpService
 
@@ -70,6 +85,7 @@ All OTP create/verify/expire/invalidate logic moves into `OtpService`. `TwoFacto
 ## Consequences
 
 **Benefits:**
+
 - Module boundaries are enforced structurally, not just by convention.
 - Adding a new module or feature has a clear, consistent location.
 - Domain modules can be reasoned about and tested in isolation.
@@ -77,6 +93,7 @@ All OTP create/verify/expire/invalidate logic moves into `OtpService`. `TwoFacto
 - Public API contracts make refactoring internals safe.
 
 **Costs:**
+
 - Significant refactor across `AuthModule`, `UserModule`, `AdminModule`, `OtpModule`, and `ActivityLogModule`.
 - `UserService` and `AdminService` need auth-oriented methods added (findByPhone, findByEmail, updatePassword, etc.).
 - TypeORM migrations are unaffected — this is a code-layer restructuring only.

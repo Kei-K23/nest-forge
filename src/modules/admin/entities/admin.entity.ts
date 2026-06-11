@@ -2,7 +2,7 @@ import { Exclude } from 'class-transformer';
 import { BaseEntity } from 'src/common/entities/base.entity';
 import { hashPasswordIfNeeded } from 'src/common/utils/password-hash.util';
 import { RefreshToken } from 'src/modules/auth/entities/refresh-token.entity';
-import { Role } from 'src/modules/auth/entities/role.entity';
+import { Role } from 'src/modules/role';
 import {
   BeforeInsert,
   BeforeUpdate,

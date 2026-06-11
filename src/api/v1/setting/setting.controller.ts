@@ -7,10 +7,12 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { RequirePermissions } from 'src/modules/auth/decorators/permissions.decorator';
-import { PermissionModule } from 'src/modules/auth/entities/permission.entity';
-import { PermissionsGuard } from 'src/modules/auth/guards/permissions.guard';
-import { LogAction, LogActivity } from 'src/modules/log';
+import { LogAction, LogActivity } from 'src/modules/log/api';
+import {
+  PermissionModule,
+  PermissionsGuard,
+  RequirePermissions,
+} from 'src/modules/role/api';
 import { CreateSMTPDto } from 'src/modules/setting/dto/create-smtp-setting.dto';
 import { SettingService } from 'src/modules/setting/services/setting.service';
 

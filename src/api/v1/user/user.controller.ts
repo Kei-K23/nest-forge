@@ -16,16 +16,18 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ResolvePresignedUrls } from 'src/common/decorators/presigned-urls.decorator';
 import { profileImageInterceptorOptions } from 'src/common/utils/file-interceptor.util';
-import { RequirePermissions } from 'src/modules/auth/decorators/permissions.decorator';
-import { PermissionModule } from 'src/modules/auth/entities/permission.entity';
-import { PermissionsGuard } from 'src/modules/auth/guards/permissions.guard';
-import { LogAction, LogActivity } from 'src/modules/log';
+import { LogAction, LogActivity } from 'src/modules/log/api';
+import {
+  PermissionModule,
+  PermissionsGuard,
+  RequirePermissions,
+} from 'src/modules/role/api';
 import {
   CreateUserDto,
   FilterUserDto,
   UpdateUserDto,
   UserService,
-} from 'src/modules/user';
+} from 'src/modules/user/api';
 
 @Controller({ path: 'users', version: '1' })
 @UseGuards(PermissionsGuard)

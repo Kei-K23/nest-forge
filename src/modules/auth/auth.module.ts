@@ -7,18 +7,13 @@ import { TokenService } from './services/token.service';
 import { UserAuthService } from './services/user-auth.service';
 import { AdminAuthService } from './services/admin-auth.service';
 import { PasswordResetService } from './services/password-reset.service';
-import { RoleService } from './services/role.service';
 import { TwoFactorService } from './services/two-factor.service';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { OtpModule } from 'src/modules/otp/otp.module';
-import { RoleModule } from 'src/modules/role/role.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { PermissionsGuard } from './guards/permissions.guard';
-import { RolesGuard } from './guards/roles.guard';
 import { ResourceOwnershipGuard } from './guards/resource-ownership.guard';
 import { AuthController } from 'src/api/v1/auth/auth.controller';
-import { AuthSeeder } from './seeders/auth.seeder';
 import { UserModule } from 'src/modules/user/user.module';
 import { AdminModule } from 'src/modules/admin/admin.module';
 
@@ -26,7 +21,6 @@ import { AdminModule } from 'src/modules/admin/admin.module';
   imports: [
     UserModule,
     AdminModule,
-    RoleModule,
     TypeOrmModule.forFeature([RefreshToken]),
     OtpModule,
     PassportModule,
@@ -47,14 +41,10 @@ import { AdminModule } from 'src/modules/admin/admin.module';
     UserAuthService,
     AdminAuthService,
     PasswordResetService,
-    RoleService,
     TwoFactorService,
     JwtStrategy,
     JwtAuthGuard,
-    PermissionsGuard,
-    RolesGuard,
     ResourceOwnershipGuard,
-    AuthSeeder,
   ],
   controllers: [AuthController],
   exports: [
@@ -62,11 +52,8 @@ import { AdminModule } from 'src/modules/admin/admin.module';
     UserAuthService,
     AdminAuthService,
     PasswordResetService,
-    RoleService,
     TwoFactorService,
     JwtAuthGuard,
-    PermissionsGuard,
-    RolesGuard,
     ResourceOwnershipGuard,
   ],
 })

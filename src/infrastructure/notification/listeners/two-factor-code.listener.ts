@@ -3,7 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import {
   TWO_FACTOR_CODE_REQUESTED,
   TwoFactorCodeRequestedEvent,
-} from 'src/modules/auth';
+} from 'src/modules/auth/api';
 import { NotificationService } from '../notification.service';
 
 @Injectable()

@@ -8,7 +8,7 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { Public } from 'src/modules/auth';
+import { Public } from 'src/modules/auth/api';
 import { version } from '../../../package.json';
 
 @SkipThrottle()

@@ -11,7 +11,7 @@ import { ActivityLogService } from '../services/activity-log.service';
 import { AuditLogService } from '../services/audit-log.service';
 import { LogAction } from '../constants/log-action.enum';
 import { Reflector } from '@nestjs/core';
-import { RequestWithUser } from 'src/modules/auth';
+import type { RequestWithUser } from 'src/modules/auth/api';
 import { Request } from 'express';
 import { parseUserAgent } from 'src/common/utils/user-agent.util';
 import { consumeAuditLogMetadata } from '../utils/audit-log-metadata.util';

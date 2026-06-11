@@ -1,39 +1,5 @@
-// Public API for AuthModule
-export { AuthModule } from './auth.module';
-
-// Services
-export { AdminAuthService } from './services/admin-auth.service';
-export { PasswordResetService } from './services/password-reset.service';
-export { TokenService } from './services/token.service';
-export { TwoFactorService } from './services/two-factor.service';
-export { UserAuthService } from './services/user-auth.service';
-
-// Guards
-export { JwtAuthGuard } from './guards/jwt-auth.guard';
-export { ResourceOwnershipGuard } from './guards/resource-ownership.guard';
-
-// Decorators
-export { CheckOwnership } from './decorators/check-ownership.decorator';
-export { CurrentUser } from './decorators/current-user.decorator';
 export { Public } from './decorators/public.decorator';
-
-// Entities
-export { RefreshToken } from './entities/refresh-token.entity';
-
-// Interfaces
-export {
-  AuthenticatedUser,
-  JwtPayload,
-  RequestWithUser,
-} from './interfaces/user.interface';
-
-// Events
-export {
-  TWO_FACTOR_CODE_REQUESTED,
-  TwoFactorCodeRequestedEvent,
-} from './events/two-factor-code-requested.event';
-
-// DTOs
+export { CurrentUser } from './decorators/current-user.decorator';
 export { AdminLoginDto } from './dto/admin-login.dto';
 export { ChangePasswordDto } from './dto/change-password.dto';
 export { DisableTwoFactorDto } from './dto/disable-two-factor.dto';
@@ -52,3 +18,13 @@ export { UserRegisterOTPVerifyDto } from './dto/user-register-otp-verify.dto';
 export { UserRegisterPasswordSetupDto } from './dto/user-register-password-setup.dto';
 export { VerifyPasswordResetOTPCodeDto } from './dto/verify-password-reset-otp-code.dto';
 export { VerifyTwoFactorDto } from './dto/verify-two-factor.dto';
+export type { AuthenticatedUser, RequestWithUser } from './interfaces/user.interface';
+export { AdminAuthService } from './services/admin-auth.service';
+export { PasswordResetService } from './services/password-reset.service';
+export { TokenService } from './services/token.service';
+export { TwoFactorService } from './services/two-factor.service';
+export { UserAuthService } from './services/user-auth.service';
+export {
+  TWO_FACTOR_CODE_REQUESTED,
+  TwoFactorCodeRequestedEvent,
+} from './events/two-factor-code-requested.event';

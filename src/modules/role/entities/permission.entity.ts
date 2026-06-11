@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
+  Relation,
 } from 'typeorm';
 import { ModuleEntity } from './module.entity';
 import { RolePermission } from './role-permission.entity';
@@ -44,7 +45,7 @@ export class Permission extends BaseEntity {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'moduleId' })
-  module!: ModuleEntity;
+  module!: Relation<ModuleEntity>;
 
   @Column({ type: 'varchar' })
   action!: ActionType;

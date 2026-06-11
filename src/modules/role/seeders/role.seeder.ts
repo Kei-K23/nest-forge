@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Admin } from 'src/modules/admin';
-import { User, UserRegistrationStage } from 'src/modules/user';
 import { Repository } from 'typeorm';
 import { ModuleEntity } from '../entities/module.entity';
 import {
@@ -32,7 +30,7 @@ interface ModuleSeed {
 }
 
 @Injectable()
-export class AuthSeeder {
+export class RoleSeeder {
   constructor(
     @InjectRepository(Role)
     private roleRepository: Repository<Role>,
@@ -40,10 +38,6 @@ export class AuthSeeder {
     private permissionRepository: Repository<Permission>,
     @InjectRepository(RolePermission)
     private rolePermissionRepository: Repository<RolePermission>,
-    @InjectRepository(Admin)
-    private adminRepository: Repository<Admin>,
-    @InjectRepository(User)
-    private userRepository: Repository<User>,
     @InjectRepository(ModuleEntity)
     private moduleRepository: Repository<ModuleEntity>,
   ) {}
@@ -138,11 +132,9 @@ export class AuthSeeder {
     }
 
     const moduleCodes = createdModules.map((m) => m.code);
-
     const roleConfigs = this.getRoleConfigurations(moduleCodes);
-    const createdRoles: Role[] = [];
-
     const modulePermissions: { [moduleCode: string]: Permission[] } = {};
+
     for (const moduleEntity of createdModules) {
       modulePermissions[moduleEntity.code] =
         await this.createModulePermissions(moduleEntity);
@@ -154,7 +146,6 @@ export class AuthSeeder {
         roleConfig.description,
         roleConfig.rank,
       );
-      createdRoles.push(role);
 
       await this.assignPermissionsToRoleFromConfig(
         role,
@@ -162,13 +153,6 @@ export class AuthSeeder {
         modulePermissions,
       );
     }
-
-    // Super Admin user
-    const superAdminRole = createdRoles.find((r) => r.name === 'Super Admin');
-    await this.createSuperAdmin(superAdminRole!);
-
-    // Normal user
-    await this.createNormalUser();
   }
 
   private async upsertModule(moduleSeed: ModuleSeed): Promise<ModuleEntity> {
@@ -277,37 +261,6 @@ export class AuthSeeder {
           }),
         );
       }
-    }
-  }
-
-  private async createSuperAdmin(role: Role): Promise<void> {
-    const email = 'arkarmin@obs.com.mm';
-    const existing = await this.adminRepository.findOne({ where: { email } });
-    if (!existing) {
-      await this.adminRepository.save(
-        this.adminRepository.create({
-          email,
-          fullName: 'Super Admin',
-          roleId: role.id,
-          password: 'passwordD123!@#',
-        }),
-      );
-    }
-  }
-
-  private async createNormalUser(): Promise<void> {
-    const email = 'suthinzar@obs.com.mm';
-    const existing = await this.userRepository.findOne({ where: { email } });
-    if (!existing) {
-      await this.userRepository.save(
-        this.userRepository.create({
-          email,
-          fullName: 'Suthinzar',
-          phone: '095085730',
-          registrationStage: UserRegistrationStage.COMPLETED,
-          password: 'passwordD123!@#',
-        }),
-      );
     }
   }
 }

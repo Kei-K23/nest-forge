@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -12,21 +13,25 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { AdminService } from 'src/modules/admin/api';
+import { LogAction, LogActivity } from 'src/modules/log/api';
 import {
   CreateRoleDto,
-} from 'src/modules/auth/dto/create-role.dto';
-import { FilterRoleDto } from 'src/modules/auth/dto/filter-role.dto';
-import { UpdateRoleDto } from 'src/modules/auth/dto/update-role.dto';
-import { RequirePermissions } from 'src/modules/auth/decorators/permissions.decorator';
-import { PermissionModule } from 'src/modules/auth/entities/permission.entity';
-import { PermissionsGuard } from 'src/modules/auth/guards/permissions.guard';
-import { LogAction, LogActivity } from 'src/modules/log';
-import { RoleService } from 'src/modules/role';
+  FilterRoleDto,
+  PermissionModule,
+  PermissionsGuard,
+  RequirePermissions,
+  RoleService,
+  UpdateRoleDto,
+} from 'src/modules/role/api';
 
 @Controller({ path: 'roles', version: '1' })
 @UseGuards(PermissionsGuard)
 export class RoleController {
-  constructor(private readonly roleService: RoleService) {}
+  constructor(
+    private readonly roleService: RoleService,
+    private readonly adminService: AdminService,
+  ) {}
 
   @Get()
   @RequirePermissions(
@@ -100,6 +105,13 @@ export class RoleController {
     { module: PermissionModule.ADMIN_ROLE_PERMISSIONS, permission: 'delete' },
   )
   async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+    const hasAssignedAdmins = await this.adminService.hasAdminsWithRole(id);
+    if (hasAssignedAdmins) {
+      throw new ConflictException(
+        'Cannot delete role that has admins assigned to it',
+      );
+    }
+
     const deleted = await this.roleService.remove(id);
     if (!deleted) throw new NotFoundException('Role not found');
   }

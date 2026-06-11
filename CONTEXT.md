@@ -38,6 +38,7 @@ A user with `registrationStage = COMPLETED` is considered to already exist for t
 An `OtpRecord` is a short-lived verification record used to validate a one-time code. The code is stored as a **SHA-256 hash** (`codeHash`) — never in plaintext, mirroring how `RefreshToken` is stored. It also tracks an optional provider `requestId`, expiry time, attempt count, and current status.
 
 **OtpPurpose** (formerly `CacheKeyService`) — the reason the OTP was issued:
+
 - `TWO_FACTOR` — used to verify a 2FA login challenge.
 - `RESET_PASSWORD` — used to authorize a password reset.
 
@@ -59,6 +60,8 @@ The distinction: `ActivityLog` is "what did the user do?"; `AuditLog` is "what d
 - **Role** — a named group of permissions assigned to an `Admin`. A role has a name and belongs to one or more `RolePermission` records.
 - **Permission** — a specific action (`CREATE | READ | UPDATE | DELETE`) on a `Module`. Permissions are not assigned directly to admins — they are assigned to roles.
 - **Module** — a named resource area (e.g. `ADMIN`, `SETTING`). Modules can have a parent module for hierarchical organization.
+
+Role-based authorization data is owned by the role context. Authentication consumes authorization data; it does not own roles or permissions.
 
 Authorization is role-based at the coarse level (`@Roles()`) and permission-based at the fine-grained level (`@Permissions()`). Both use OR semantics — any matching role or permission grants access.
 

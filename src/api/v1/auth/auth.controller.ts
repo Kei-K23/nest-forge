@@ -45,8 +45,8 @@ import {
   UserRegisterPasswordSetupDto,
   VerifyPasswordResetOTPCodeDto,
   VerifyTwoFactorDto,
-} from 'src/modules/auth';
-import { LogAction, LogActivity } from 'src/modules/log';
+} from 'src/modules/auth/api';
+import { LogAction, LogActivity } from 'src/modules/log/api';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
@@ -57,6 +57,22 @@ export class AuthController {
     private passwordResetService: PasswordResetService,
     private twoFactorService: TwoFactorService,
   ) {}
+
+  private serializeDate(value: Date | string | null | undefined) {
+    if (value instanceof Date) return value.toISOString();
+    return value;
+  }
+
+  private serializeProfile(user: AuthenticatedUser) {
+    return {
+      ...user,
+      createdAt: this.serializeDate(user.createdAt),
+      updatedAt: this.serializeDate(user.updatedAt),
+      deletedAt: this.serializeDate(user.deletedAt),
+      lastLoginAt: this.serializeDate(user.lastLoginAt),
+      lastLogoutAt: this.serializeDate(user.lastLogoutAt),
+    };
+  }
 
   @Public()
   @Post('admin/login')
@@ -159,7 +175,7 @@ export class AuthController {
   @Get('me')
   @ResolvePresignedUrls('profileImageUrl')
   getProfile(@CurrentUser() user: AuthenticatedUser) {
-    return user;
+    return this.serializeProfile(user);
   }
 
   @Patch('me')

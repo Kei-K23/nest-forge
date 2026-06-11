@@ -78,7 +78,6 @@ export class RoleService {
     return this.roleRepository.findOne({
       where: { id },
       relations: [
-        'admins',
         'rolePermissions',
         'rolePermissions.permission',
         'rolePermissions.permission.module',
@@ -204,15 +203,6 @@ export class RoleService {
 
     if (!role) {
       return false;
-    }
-
-    if (role.admins && role.admins.length > 0) {
-      this.logger.warn(
-        `Cannot delete role with ID '${id}' that has admins assigned to it`,
-      );
-      throw new ConflictException(
-        'Cannot delete role that has admins assigned to it',
-      );
     }
 
     await this.roleRepository.softDelete(id);

@@ -1,7 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { SeederModule } from './seeder.module';
-import { AuthSeeder } from 'src/modules/auth/seeders/auth.seeder';
+import { AdminSeeder } from 'src/modules/admin/seeders/admin.seeder';
+import { RoleSeeder } from 'src/modules/role/seeders/role.seeder';
 import { SettingSeeder } from 'src/modules/setting/seeders/setting.seeder';
+import { UserSeeder } from 'src/modules/user/seeders/user.seeder';
 
 async function runSeeders() {
   console.log('🌱 Starting database seeding...');
@@ -9,16 +11,22 @@ async function runSeeders() {
   const app = await NestFactory.createApplicationContext(SeederModule);
 
   try {
-    // Get seeder instances
-    const authSeeder = app.get(AuthSeeder);
+    const roleSeeder = app.get(RoleSeeder);
+    const adminSeeder = app.get(AdminSeeder);
+    const userSeeder = app.get(UserSeeder);
     const settingSeeder = app.get(SettingSeeder);
 
-    // Run seeders in order
-    console.log(
-      '📝 Seeding authentication data (roles, permissions, users)...',
-    );
-    await authSeeder.seed();
-    console.log('✅ Authentication seeding completed');
+    console.log('📝 Seeding role and permission data...');
+    await roleSeeder.seed();
+    console.log('✅ Role and permission seeding completed');
+
+    console.log('👤 Seeding admin data...');
+    await adminSeeder.seed();
+    console.log('✅ Admin seeding completed');
+
+    console.log('📱 Seeding user data...');
+    await userSeeder.seed();
+    console.log('✅ User seeding completed');
 
     console.log('⚙️ Seeding application settings...');
     await settingSeeder.seed();

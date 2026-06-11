@@ -10,11 +10,11 @@ import {
   parseRangeEnd,
   parseRangeStart,
 } from 'src/common/utils/date-time.util';
-import { Role } from 'src/modules/auth';
 import {
   attachAuditLogMetadata,
   diffAuditValues,
 } from 'src/modules/log/utils/audit-log-metadata.util';
+import { RoleService } from 'src/modules/role';
 import { DeepPartial, Repository } from 'typeorm';
 import { CreateAdminDto } from '../dto/create-admin.dto';
 import { FilterAdminDto } from '../dto/filter-admin.dto';
@@ -28,8 +28,7 @@ export class AdminService {
   constructor(
     @InjectRepository(Admin)
     private adminRepository: Repository<Admin>,
-    @InjectRepository(Role)
-    private roleRepository: Repository<Role>,
+    private roleService: RoleService,
     private fileUploadService: FileUploadService,
   ) {}
 
@@ -46,9 +45,7 @@ export class AdminService {
       );
     }
 
-    const role = await this.roleRepository.findOne({
-      where: { id: createAdminDto.roleId },
-    });
+    const role = await this.roleService.findOne(createAdminDto.roleId);
     if (!role) {
       throw new NotFoundException(
         `Role with ID '${createAdminDto.roleId}' not found`,
@@ -160,9 +157,7 @@ export class AdminService {
     }
 
     if (dto.roleId && dto.roleId !== existingAdmin.roleId) {
-      const role = await this.roleRepository.findOne({
-        where: { id: dto.roleId },
-      });
+      const role = await this.roleService.findOne(dto.roleId);
       if (!role) {
         this.logger.warn(`Role with ID '${dto.roleId}' not found`);
         throw new NotFoundException(`Role with ID '${dto.roleId}' not found`);
@@ -271,5 +266,10 @@ export class AdminService {
 
   async updateFields(id: string, data: Partial<Admin>): Promise<void> {
     await this.adminRepository.update(id, data);
+  }
+
+  async hasAdminsWithRole(roleId: string): Promise<boolean> {
+    const count = await this.adminRepository.count({ where: { roleId } });
+    return count > 0;
   }
 }

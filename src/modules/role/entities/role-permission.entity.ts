@@ -1,13 +1,13 @@
 import {
   Entity,
-  PrimaryColumn,
-  ManyToOne,
-  JoinColumn,
   Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryColumn,
   Relation,
 } from 'typeorm';
-import { Role } from './role.entity';
 import { Permission } from './permission.entity';
+import { Role } from './role.entity';
 
 @Entity('role_permissions')
 @Index(['roleId', 'permissionId'], { unique: true })
@@ -28,5 +28,5 @@ export class RolePermission {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'permissionId' })
-  permission!: Permission;
+  permission!: Relation<Permission>;
 }

@@ -10,10 +10,7 @@ import {
   PermissionRequirement,
 } from '../decorators/permissions.decorator';
 import { ActionType } from '../entities/permission.entity';
-import {
-  AuthenticatedUser,
-  RequestWithUser,
-} from '../interfaces/user.interface';
+import type { AuthenticatedUser, RequestWithUser } from 'src/modules/auth/api';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {

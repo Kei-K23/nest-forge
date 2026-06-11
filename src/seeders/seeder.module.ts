@@ -4,14 +4,16 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { envValidationSchema } from '../common/config/env.validation';
 import dataSource from '../data-source';
 import { Admin } from 'src/modules/admin/entities/admin.entity';
-import { ModuleEntity } from 'src/modules/auth/entities/module.entity';
-import { Permission } from 'src/modules/auth/entities/permission.entity';
-import { RolePermission } from 'src/modules/auth/entities/role-permission.entity';
-import { Role } from 'src/modules/auth/entities/role.entity';
-import { AuthSeeder } from 'src/modules/auth/seeders/auth.seeder';
+import { AdminSeeder } from 'src/modules/admin/seeders/admin.seeder';
+import { ModuleEntity } from 'src/modules/role/entities/module.entity';
+import { Permission } from 'src/modules/role/entities/permission.entity';
+import { RolePermission } from 'src/modules/role/entities/role-permission.entity';
+import { Role } from 'src/modules/role/entities/role.entity';
+import { RoleSeeder } from 'src/modules/role/seeders/role.seeder';
 import { Setting } from 'src/modules/setting/entities/setting.entity';
 import { SettingSeeder } from 'src/modules/setting/seeders/setting.seeder';
 import { User } from 'src/modules/user/entities/user.entity';
+import { UserSeeder } from 'src/modules/user/seeders/user.seeder';
 
 @Module({
   imports: [
@@ -35,6 +37,6 @@ import { User } from 'src/modules/user/entities/user.entity';
       User,
     ]),
   ],
-  providers: [AuthSeeder, SettingSeeder],
+  providers: [RoleSeeder, AdminSeeder, UserSeeder, SettingSeeder],
 })
 export class SeederModule {}

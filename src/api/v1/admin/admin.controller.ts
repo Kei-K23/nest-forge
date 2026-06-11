@@ -21,13 +21,13 @@ import {
   CreateAdminDto,
   FilterAdminDto,
   UpdateAdminDto,
-} from 'src/modules/admin';
+} from 'src/modules/admin/api';
+import { LogAction, LogActivity } from 'src/modules/log/api';
 import {
   PermissionModule,
   PermissionsGuard,
   RequirePermissions,
-} from 'src/modules/auth';
-import { LogAction, LogActivity } from 'src/modules/log';
+} from 'src/modules/role/api';
 
 @Controller({ path: 'admins', version: '1' })
 @UseGuards(PermissionsGuard)
